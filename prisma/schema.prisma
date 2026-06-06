@@ -1,0 +1,260 @@
+// PropComply AI + VerifyMe Global - Enterprise Database Schema
+// Trust Infrastructure Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// IDENTITY DOMAIN
+// ============================================
+
+model IdentityProfile {
+  id              String   @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String   @unique
+  phone           String?
+  dateOfBirth     String?
+  nationality     String?
+  trustLevel      Int      @default(0) // 0-5 Trust Ladder
+  trustScore      Float    @default(0) // 0-100
+  status          String   @default("pending") // pending, verified, suspended, rejected
+  consentGiven    Boolean  @default(false)
+  gdprCompliant   Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  credentials     IdentityCredential[]
+  evidence        IdentityEvidence[]
+  verifications   VerificationRecord[]
+  complianceChecks ComplianceCheck[]
+  riskScores      RiskScore[]
+  propertyApps    PropertyApplication[]
+  auditLogs       AuditLog[]
+}
+
+model IdentityCredential {
+  id              String   @id @default(cuid())
+  profileId       String
+  credentialType  String   // passport, national_id, visa, residence_permit, biometric, banking, employer, university, government
+  credentialValue String   // encrypted/reference
+  trustLevel      Int      // maps to Trust Ladder level
+  issuingCountry  String?
+  issuingAuthority String?
+  validFrom       DateTime?
+  validTo         DateTime?
+  verificationStatus String @default("pending") // pending, verified, failed, expired
+  verifiedAt      DateTime?
+  evidenceHash    String?  // hash of supporting evidence
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model IdentityEvidence {
+  id              String   @id @default(cuid())
+  profileId       String
+  evidenceType    String   // document, biometric, behavioral, institutional, government
+  evidenceData    String   // JSON - encrypted evidence metadata
+  confidence      Float    @default(0) // 0-1 confidence score
+  source          String?
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+
+  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model VerificationRecord {
+  id              String   @id @default(cuid())
+  profileId       String
+  verificationType String  // document, biometric_face, liveness, open_banking, income, employer, university, government
+  status          String   @default("pending") // pending, in_progress, passed, failed, expired
+  provider        String?  // verification provider
+  result          String?  // JSON result data
+  confidence      Float    @default(0)
+  attemptCount    Int      @default(1)
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// COMPLIANCE DOMAIN
+// ============================================
+
+model ComplianceCheck {
+  id              String   @id @default(cuid())
+  profileId       String
+  checkType       String   // aml, kyc, cdd, edd, sanctions, pep, adverse_media, right_to_rent
+  status          String   @default("pending") // pending, in_progress, passed, failed, escalated
+  riskRating      String   @default("low") // low, medium, high, critical
+  checkProvider   String?
+  results         String?  // JSON - detailed results
+  evidenceRef     String?  // reference to supporting evidence
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// RISK DOMAIN
+// ============================================
+
+model RiskScore {
+  id              String   @id @default(cuid())
+  profileId       String
+  overallScore    Float    @default(0) // 0-100 (100 = lowest risk)
+  riskCategory    String   @default("medium") // low, medium, high, critical
+  fraudProbability Float   @default(0) // 0-1
+  identityRisk    Float    @default(0)
+  financialRisk   Float    @default(0)
+  behavioralRisk  Float    @default(0)
+  complianceRisk  Float    @default(0)
+  riskFactors     String?  // JSON - detailed risk factor breakdown
+  modelVersion    String?
+  explainability  String?  // JSON - explainability data for the score
+  createdAt       DateTime @default(now())
+
+  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model FraudAlert {
+  id              String   @id @default(cuid())
+  alertType       String   // identity_fraud, document_fraud, synthetic_identity, money_laundering, suspicious_behavior
+  severity        String   @default("medium") // low, medium, high, critical
+  status          String   @default("open") // open, investigating, confirmed, false_positive, resolved
+  description     String
+  evidenceRef     String?  // JSON
+  relatedProfileId String?
+  assignedTo      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================
+// PROPERTY DOMAIN
+// ============================================
+
+model Property {
+  id              String   @id @default(cuid())
+  address         String
+  city            String
+  postcode        String
+  country         String   @default("GB")
+  propertyType    String   // residential, commercial, hmo
+  bedrooms        Int?
+  complianceStatus String  @default("pending") // pending, compliant, non_compliant, under_review
+  lastInspection  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  applications    PropertyApplication[]
+}
+
+model PropertyApplication {
+  id              String   @id @default(cuid())
+  propertyId      String
+  profileId       String
+  applicationType String   // tenancy, purchase, rental
+  status          String   @default("submitted") // submitted, under_review, approved, rejected, withdrawn
+  complianceClear Boolean  @default(false)
+  riskClear       Boolean  @default(false)
+  rightToRent     String   @default("pending") // pending, verified, failed, expired
+  guarantorReplaced Boolean @default(false)
+  depositAmount   Float?
+  monthlyAmount   Float?
+  startDate       DateTime?
+  endDate         DateTime?
+  submittedAt     DateTime @default(now())
+  decidedAt       DateTime?
+
+  property        Property @relation(fields: [propertyId], references: [id])
+  profile         IdentityProfile @relation(fields: [profileId], references: [id])
+}
+
+// ============================================
+// PARTNER DOMAIN
+// ============================================
+
+model Partner {
+  id              String   @id @default(cuid())
+  name            String
+  partnerType     String   // bank, insurer, mortgage_provider, remittance, employer, university
+  status          String   @default("active") // active, suspended, terminated
+  apiEndpoint     String?
+  integrationType String?  // api, webhook, batch, manual
+  trustRating     Float    @default(0) // 0-100
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  referrals       PartnerReferral[]
+}
+
+model PartnerReferral {
+  id              String   @id @default(cuid())
+  partnerId       String
+  profileId       String?
+  referralType    String   // banking, insurance, mortgage, remittance
+  status          String   @default("pending") // pending, sent, accepted, completed, failed
+  referralData    String?  // JSON
+  createdAt       DateTime @default(now())
+
+  partner         Partner @relation(fields: [partnerId], references: [id])
+}
+
+// ============================================
+// AUDIT & GOVERNANCE
+// ============================================
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  profileId       String?
+  action          String
+  performedBy     String?
+  resource        String
+  resourceId      String?
+  details         String?  // JSON
+  ipAddress       String?
+  timestamp       DateTime @default(now())
+
+  profile         IdentityProfile? @relation(fields: [profileId], references: [id])
+}
+
+model ConsentRecord {
+  id              String   @id @default(cuid())
+  profileId       String?
+  consentType     String   // data_processing, marketing, third_party_sharing, automated_decisions
+  granted         Boolean
+  purpose         String?
+  legalBasis      String?  // consent, legitimate_interest, contract, legal_obligation
+  withdrawnAt     DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+}
+
+// ============================================
+// PLATFORM CONFIG
+// ============================================
+
+model PlatformConfig {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  description     String?
+  updatedAt       DateTime @updatedAt
+}

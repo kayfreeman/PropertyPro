@@ -321,3 +321,173 @@ model PlatformConfig {
   description     String?
   updatedAt       DateTime @updatedAt
 }
+
+// ============================================
+// PROCESS WORKFLOW DOMAIN
+// ============================================
+
+model OnboardingProcess {
+  id              String   @id @default(cuid())
+  profileId       String?
+  applicantEmail  String
+  applicantName   String
+  nationality     String?
+  currentStep     Int      @default(1) // 1-10 steps
+  status          String   @default("draft") // draft, in_progress, pending_review, certified, rejected
+  
+  // Step 1: Account Registration
+  registrationMethod String? // email, google, microsoft
+  mfaEnforced     Boolean  @default(false)
+  
+  // Step 2: Identity Evidence
+  passportUploaded Boolean @default(false)
+  visaUploaded     Boolean @default(false)
+  financialFilesUploaded Boolean @default(false)
+  
+  // Step 3: Biometric Verification
+  selfieCaptured   Boolean @default(false)
+  livenessScore    Float?
+  faceMatchScore   Float?
+  deepfakeScore    Float?
+  biometricConfidence Float?
+  
+  // Step 4: Financial Behaviour
+  financialMonthsAnalyzed Int?
+  incomeStability  Float?
+  spendingCoherence Float?
+  professionMatch  Float?
+  
+  // Step 5: Cross-Jurisdictional
+  sourceCountryDb  String? // e.g. NIN, Aadhaar
+  sourceCountryVerified Boolean @default(false)
+  homeOfficeVerified Boolean @default(false)
+  professionalRegistryVerified Boolean @default(false)
+  
+  // Step 6: Triple Source Corroboration
+  biometricScore   Float?
+  behaviouralScore Float?
+  jurisdictionalScore Float?
+  overallConfidenceScore Float? // 0-100
+  
+  // Step 7: Confidence Gateway
+  gatewayPassed    Boolean @default(false)
+  gatewayResult    String? // auto_certified, manual_review
+  
+  // Step 8: Risk Assessment
+  identityRisk     Float?
+  amlRisk          Float?
+  financialRisk    Float?
+  tenancyRisk      Float?
+  
+  // Step 9: Credential Generation
+  credentialIssued Boolean @default(false)
+  credentialToken  String?
+  
+  // Step 10: Agent Review
+  agentReviewed    Boolean @default(false)
+  agentDecision    String? // approved, rejected, more_evidence_needed
+  reviewedBy       String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model AMLProcess {
+  id              String   @id @default(cuid())
+  profileId       String?
+  transactionRef  String   @unique
+  propertyRef     String?
+  currentStep     Int      @default(1) // 1-7 steps
+  status          String   @default("initialized") // initialized, identity_check, cdd, screening, edd, decision, sar, completed
+  
+  // Step 1: Transaction Initialization
+  transactionType String? // property_application, real_estate_participant
+  transactionAmount Float?
+  
+  // Step 2: Identity Verification Integration
+  identityVerified Boolean @default(false)
+  kycComplete      Boolean @default(false)
+  
+  // Step 3: Customer Due Diligence
+  cddComplete      Boolean @default(false)
+  riskClassification String? // low, medium, high, critical
+  
+  // Step 4: Watchlist Screening
+  sanctionsCheck   String? // clear, match, potential_match
+  pepCheck         String? // clear, match, potential_match
+  adverseMediaCheck String? // clear, match, potential_match
+  screeningProvider String?
+  screeningDate    DateTime?
+  
+  // Step 5: Source of Funds & EDD
+  eddRequired      Boolean @default(false)
+  sofVerified      Boolean @default(false)
+  sourceOfFunds    String?
+  eddComplete      Boolean @default(false)
+  
+  // Step 6: Compliance Decision
+  decisionResult   String? // cleared, flagged, locked_down
+  amlRiskScore     Float?
+  decidedBy        String?
+  decidedAt        DateTime?
+  
+  // Step 7: SAR Generation
+  sarGenerated     Boolean @default(false)
+  sarReference     String?
+  sarFiledAt       DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RightToRentProcess {
+  id              String   @id @default(cuid())
+  profileId       String?
+  agentId         String?
+  propertyId      String?
+  currentStep     Int      @default(1) // 1-7 steps
+  status          String   @default("initiated") // initiated, visa_ingestion, home_office, status_check, risk_assessment, certification, monitoring, completed
+  
+  // Step 1: Initiate Check
+  initiatedBy     String?
+  checkReason     String?
+  
+  // Step 2: Visa Ingestion & OCR
+  visaType        String? // tier2, student, eu_settlement, resident_permit, etc.
+  documentAuthentic Boolean @default(false)
+  tamperingCheck  Boolean @default(false)
+  ocrConfidence   Float?
+  
+  // Step 3: Home Office Validation
+  visaGrantValid  Boolean @default(false)
+  ukResidenceData Boolean @default(false)
+  immigrationPermissions Boolean @default(false)
+  homeOfficeCheckDate DateTime?
+  
+  // Step 4: Status & Visa Verification
+  permanentRight  Boolean @default(false)
+  timeLimitedStatus Boolean @default(false)
+  expiryDate      DateTime?
+  restrictions    String? // JSON
+  
+  // Step 5: Risk & Compliance Assessment
+  complianceResult String? // pass, fail, review
+  rulesEngineResult String? // JSON
+  statutoryGuidelineMet Boolean @default(false)
+  
+  // Step 6: Evidence Generation & Certification
+  certificateIssued Boolean @default(false)
+  certificateToken String?
+  evidenceTrailRef String?
+  issuedAt        DateTime?
+  expiresAt       DateTime?
+  
+  // Step 7: Continuous Expiry Monitoring
+  monitoringActive Boolean @default(false)
+  daysToExpiry    Int?
+  lastAlertSent   DateTime?
+  alertStatus     String? // none, warning, critical, expired
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

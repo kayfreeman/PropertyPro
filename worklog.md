@@ -451,3 +451,265 @@
 - Partners API: returns 4 partners (Barclays, AXA, Halifax, Wise) with 6 referrals
 - AI Chat API: returns keyword-matched mock responses
 - All 7 navigation tabs functional with smooth transitions
+
+---
+
+## Task 4: Property Anti-Money Laundering (AML) Verification Workflow
+**Agent**: aml-workflow-agent
+**Date**: 2026-06-07
+**Status**: ✅ Completed
+
+### Files Created
+
+1. **`/home/z/my-project/src/components/platform/AMLWorkflow.tsx`** — Interactive 7-step AML verification workflow component:
+   - 'use client' directive with Framer Motion animations and AnimatePresence for step transitions
+   - **Horizontal Pipeline Stepper** — 7-step progress indicator with icons, status colors, and active step animation
+     - Each step: colored circle with icon, name label, completion checkmark
+     - ChevronRight connectors between steps (emerald when completed)
+     - Overall progress bar (X/7 steps complete)
+     - Click completed/active steps to navigate
+   - **Step 1: Transaction Initialization** — Two-column layout
+     - Left: Form with auto-generated transaction reference (font-mono, read-only), property reference input, transaction type Select (property_application, real_estate_purchase, tenant_verification, landlord_registration), amount input with £ prefix, "Initialize Transaction" button with Zap icon + loading animation
+     - Right: Transaction summary card — shows reference, amount, type, property ref, initialized timestamp after initialization; empty state with FileText icon before
+   - **Step 2: Identity Verification Integration** — Two-column layout
+     - Left: Profile selector via Select dropdown (5 mock profiles with trust level badges), profile preview card with avatar initials, KYC status badge, trust level badge, "Verify Identity Integration" button
+     - Right: Verification result panel — 4 KYC indicators (Document Verification, Biometric Check, Liveness Detection, PEP/Screening Baseline) with status badges, trust level Progress bar, success/failure Alert
+   - **Step 3: Customer Due Diligence (CDD)** — Two-column layout
+     - Left: "Trigger CDD Assessment" button with loading animation, risk classification Select (Simplified/Standard/Enhanced with colored dots), risk factors checklist with 8 options (Checkbox components), CDD in-progress state with animated Progress bar
+     - Right: CDD result card — large classification badge (emerald=low, amber=medium, red=high), risk factors with Flag icons, completion Alert
+   - **Step 4: Watchlist Screening** — Full-width layout with 3 screening panels
+     - Header: Screening provider badge (ComplyAdvantage), "Run Screening" button, animated progress bar during scan
+     - **Sanctions Panel** — Red accent, Ban icon, 4 databases (OFAC 🇺🇸, EU 🇪🇺, UN 🇺🇳, HMT 🇬🇧) with per-database status icons, result details
+     - **PEP Panel** — Amber accent, Landmark icon, 3 registries (UK, EU, Global) with status icons, result details
+     - **Adverse Media Panel** — Pink accent, Newspaper icon, 3 sources (Negative News, Regulatory Actions, Legal Proceedings) with status icons, result details
+     - Each panel: ScreeningBadge component (Pending/Scanning/Clear/Match/Potential Match), border color changes based on result
+     - Simulated phased screening: Sanctions → PEP → Adverse Media with sequential timeouts
+     - Completion Alert: green for all-clear, amber for flags detected
+   - **Step 5: Source of Funds & EDD** — Conditional display
+     - If no EDD required: large CheckCircle2 icon + "EDD Not Required" message with "Proceed to Decision" button
+     - If EDD required: Two-column layout with red border styling
+       - Left: EDD escalation Alert, Source of Funds declaration Select (7 options), supporting documents checklist (6 document types with Upload icons), "Complete EDD Verification" button
+       - Right: EDD structural verification checklist (6 items: Identity Structure, Source of Wealth, Beneficial Ownership, Transaction Pattern, Jurisdiction Risk, Business Relationship Purpose), verification progress counter and mini Progress bar
+   - **Step 6: Compliance Decision Routing** — Full-width decision visualization
+     - Two-branch comparison cards:
+       - Branch A (Lockdown): Red styling, Lock icon, alert for sanctions/PEP match, freeze transaction action
+       - Branch B (Clearance): Emerald styling, Unlock icon, compliance clearance, assign risk score
+     - Active branch highlighted based on screening results, inactive branch dimmed (opacity-50)
+     - "Route Compliance Decision" button with ShieldCheck icon
+     - After decision: RiskScoreGauge SVG component (animated circular gauge, 0-100 scale, color-coded), decision details (result badge, decided by, timestamp, transaction ref, profile name)
+     - Lockdown: red Alert with profile freeze notification
+     - Cleared: emerald Alert with compliance clearance certificate
+   - **Step 7: SAR Generation** — Conditional display
+     - If SAR not required: "SAR Not Required" message with transaction summary
+     - If SAR required: Red Alert for suspicious activity, two-column layout
+       - Left: SAR payload preview — formatted JSON with syntax highlighting (pink keys, emerald strings, amber numbers), all screening results and findings
+       - Right: SAR summary — filing reference (auto-generated), status badge (not_required/draft/filed/acknowledged), filed timestamp, key findings list with AlertTriangle icons, regulatory reference (UK MLR 2017 Regulation 20), "Generate & File SAR" button
+   - **Navigation Controls** — Previous/Next step buttons, "Step X of 7" badge, disabled state logic based on step completion
+   - State management: useState for all step data (transaction, identity, CDD, screening, EDD, decision, SAR), useCallback for handlers with simulated timeouts
+
+2. **`/home/z/my-project/src/app/api/aml-process/route.ts`** — AML process API endpoint:
+   - **GET**: List AML processes with optional filtering (status, profileId, step query params)
+     - Returns processes array, total count, summary (byStatus, byStep, completedCount, lockdownCount, clearedCount, sarCount)
+   - **POST**: Create new AML process
+     - Required: transactionType; Optional: profileId, propertyRef, transactionAmount
+     - Validates profile existence if profileId provided
+     - Auto-generates unique transaction reference (AML-{timestamp}-{random})
+     - Creates audit log entry
+   - **PATCH**: Update AML process step/status
+     - Required: id; Optional: currentStep, status, and all AMLProcess fields
+     - Allowed update fields whitelist for security
+     - Auto-sets timestamps: decidedAt on decision status, sarFiledAt on SAR generation, screeningDate on screening checks
+     - Creates audit log entry
+
+3. **`/home/z/my-project/src/components/platform/ComplianceAutomation.tsx`** — Updated with Tabs:
+   - Added shadcn Tabs component at top with two tabs:
+     - "Compliance Checks" (FileCheck icon) — active: emerald-50 bg + emerald-700 text
+     - "AML Workflow" (ShieldCheck icon) — active: teal-50 bg + teal-700 text
+   - Extracted existing compliance content into `ComplianceChecksTab` sub-component (all cards, pipeline, table, regulatory framework unchanged)
+   - Imported AMLWorkflow and rendered in "AML Workflow" tab via TabsContent
+   - Main `ComplianceAutomation` component now renders Tabs with both TabsContent panels
+
+### Key Design Decisions
+- Used teal/cyan color scheme for early steps (Init, KYC, CDD), amber for screening, red for EDD, violet for decision, pink for SAR — reflecting escalating risk
+- Simulated screening runs in 3 phases (6.5 seconds total) with sequential status updates — realistic multi-database scanning feel
+- RiskScoreGauge uses raw SVG with Framer Motion for smooth animated score reveal
+- EDD step is conditional — shows streamlined "not required" message or full verification form based on screening flags
+- SAR step is conditional — shows "not required" when cleared, or full filing workflow when suspicious
+- Step navigation is gated by completion requirements (e.g., can't skip to Step 3 without initializing transaction)
+- Mock profiles have different trust levels and KYC statuses to demonstrate both clean and flagged pathways
+- All step data managed in parent component state for cross-step communication (e.g., screening results determine EDD requirement and decision routing)
+
+### Verification
+- Lint passes with no errors
+- Dev server running with 200 responses
+- AML Process API GET: returns empty list (no seeded data), summary with all zero counts
+- AML Process API POST: creates process with auto-generated reference, 201 response
+- AML Process API PATCH: updates process fields with audit logging
+- Both Compliance Checks and AML Workflow tabs render correctly
+
+## Task 3: VerifyMe Global Profile Creation & Tenant Onboarding Wizard
+**Agent**: onboarding-wizard-agent
+**Date**: 2026-06-07
+**Status**: ✅ Completed
+
+### Files Created
+
+1. **`/home/z/my-project/src/components/platform/VerifyMeOnboarding.tsx`** — 10-step interactive onboarding wizard component:
+   - 'use client' directive with Framer Motion animations and AnimatePresence for step transitions
+   - **Vertical Stepper (left panel)**: Shows all 10 steps with completed/current/pending status, progress bar, step icons from Lucide
+   - **Step Content (right panel)**: Animated step transitions with Next/Previous navigation and dot indicators
+   - **Step 1 — Account Registration**: Form with email, name, nationality fields; RadioGroup for registration method (Email/Google/Microsoft) with styled option cards; MFA toggle switch with Shield icon; "Create Account" button with success animation
+   - **Step 2 — Identity Evidence Collection**: Three upload zones (Passport, Visa/Residence Permit, Financial Files) with simulated upload progress; drag-drop styled areas; file size indicators; color-coded status badges; warning note about required documents
+   - **Step 3 — Biometric Verification Layer**: Simulated selfie capture with animated face outline and scanning ring; three metric cards (Liveness Detection 94%, Face Match 91%, Deepfake Validation 97%); CircularGauge component for overall biometric confidence score; cryptographic cross-match note with AES-256-GCM encryption reference
+   - **Step 4 — Financial Behaviour Analysis**: Month selector (3/6/12/24) with styled toggle buttons; three animated progress bars (Income Stability, Spending Coherence, Profession Match); Coherence result (Pass/Review) with contextual message; Open Banking integration note
+   - **Step 5 — Cross-Jurisdictional Validation**: Source country selector (13 countries); DbCheckIndicator sub-component for database check status (NIN/Aadhaar, UK Home Office, Professional Registry); animated result reveal; jurisdictional verification summary
+   - **Step 6 — Triple Source Corroboration Engine Fusion**: Three domain score cards (Biometric, Behavioural, Jurisdictional) with weights (35%/35%/30%); animated fusion visualization with merging circles; large CircularGauge (160px) for overall confidence score; fusion formula explanation
+   - **Step 7 — Confidence Gateway Check**: Large score display with SVG gauge; threshold marker at 80 with visual line indicator; IF ≥ 80: Green "AUTO CERTIFIED" badge with spring animation and Award icon; IF < 80: Orange "MANUAL REVIEW REQUIRED" with routing info; gateway logic explanation
+   - **Step 8 — Risk Assessment**: Four risk vector cards (Identity, AML, Financial, Tenancy) with RiskGauge sub-component; color-coded categories (Low/Medium/High/Critical); overall risk assessment summary with four mini score boxes; explainability note with Eye icon
+   - **Step 9 — Credential Generation & Issuance**: Credential generation animation with rotating key icon; encrypted credential token display; QR code placeholder grid; portable identity profile summary; credential validity with expiry date
+   - **Step 10 — Agent Review & Approval**: Verification URL display with copy button; agent review status indicator (Pending/In Review/Approved/Rejected/More Evidence) with animated icons; simulated agent review interface with Approve/Reject/Request More Evidence buttons; reviewed-by information display
+   - **Helper Components**: CircularGauge (SVG ring with animated stroke), RiskGauge (color-coded progress with category badge), DbCheckIndicator (status with icon)
+   - **Simulation Engine**: Auto-runs verification simulations when entering steps (biometric, financial, jurisdictional, fusion, gateway, risk, credential); realistic multi-stage progress with timeouts
+   - **Navigation Guards**: `canProceed()` function validates step completion before allowing Next; step-specific validation (account created, passport uploaded, biometric complete, etc.)
+   - Emerald/teal color scheme, responsive design (mobile-first), enterprise-grade UI
+
+2. **`/home/z/my-project/src/app/api/onboarding/route.ts`** — Onboarding process API endpoint:
+   - **GET**: List onboarding processes with filtering (status, currentStep, limit, offset); includes summary statistics (total, draft, in_progress, pending_review, certified, rejected counts, avg confidence score, auto_certified vs manual_review counts)
+   - **POST**: Create new onboarding process with validation (applicantEmail + applicantName required); duplicate email check (409 Conflict for active processes); supports profileId, nationality, registrationMethod, mfaEnforced fields
+   - **PATCH**: Update onboarding process step/status with allowed field whitelist (40+ fields covering all 10 steps); validates process exists (404 if not found); supports partial updates
+   - Uses `db.onboardingProcess` from Prisma client
+
+3. **`/home/z/my-project/src/components/platform/IdentityTrust.tsx`** — Updated with Tabs component:
+   - Added `Tabs`, `TabsContent`, `TabsList`, `TabsTrigger` imports from shadcn/ui
+   - Added `Users` and `UserPlus` icon imports from Lucide
+   - Added `VerifyMeOnboarding` import
+   - Two tabs: "Profiles" (Users icon, shows existing trust ladder + profiles table) and "Onboarding" (UserPlus icon, shows VerifyMeOnboarding wizard)
+   - TabsList with gap-1.5 icon+label triggers
+   - `activeTab` state defaults to 'profiles'
+
+### Key Design Decisions
+- CircularGauge uses raw SVG with motion.circle for smooth animated stroke transition (1.2s easeOut)
+- RiskGauge uses motion.div width animation for engaging risk bar visualization
+- Step simulations use setTimeout chains for realistic multi-stage verification feel
+- Fusion engine computes weighted scores dynamically based on actual step results
+- Gateway check is data-driven — auto_certified vs manual_review based on actual computed confidence score
+- Agent review includes simulated review actions for demo purposes (Approve with 2s delay → auto-approve)
+- QR code placeholder uses random grid pattern (no external QR library needed)
+- All colors follow established palette: emerald (#10b981), teal (#0d9488), cyan (#06b6d4), amber (#f59e0b), red (#ef4444)
+- Tabs integration preserves all existing IdentityTrust functionality unchanged
+
+### Verification
+- Lint passes with 0 errors (1 warning in unrelated AMLWorkflow.tsx)
+- Dev server returning 200 on main page
+- Onboarding API: GET returns empty processes with summary, POST creates process successfully, all fields stored correctly
+- Identity section: Profiles tab shows existing trust ladder + profiles table, Onboarding tab shows 10-step wizard
+
+---
+
+## Task 5: Right to Rent Compliance Flow
+**Agent**: rtr-flow-agent
+**Date**: 2026-06-07
+**Status**: ✅ Completed
+
+### Files Created
+
+1. **`/home/z/my-project/src/components/platform/RightToRentFlow.tsx`** - 7-step interactive Right to Rent compliance workflow:
+   - 'use client' directive with Framer Motion animations and AnimatePresence
+   - **Vertical Timeline Stepper** (desktop): 7-step circular icons with connector lines, completed steps shown in emerald, current step with teal ring animation, accessible step navigation
+   - **Mobile Step Navigation**: Compact horizontal step buttons with icons, active step highlighted
+   - **Progress Bar**: Overall progress indicator (step X of 7)
+   - **Step 1 — Initiate Check**:
+     - Initiator name input field
+     - Check reason selector (5 options: new_tenancy, renewal, statutory_repeat, compliance_audit, change_circumstance)
+     - Applicant search with filterable mock applicant cards (5 applicants with name, nationality, visa type)
+     - Property selector with 3 mock UK properties
+     - "Initiate Right to Rent Check" button with validation
+   - **Step 2 — Visa Ingestion & OCR Validation**:
+     - Visa type selector (8 types: Tier 2, Tier 4, EU Settlement, Pre-Settled, Resident Permit, ILR, Spouse, Global Talent)
+     - Document upload zone with drag-and-drop styling and encryption badge
+     - OCR processing animation (spinning icon, progress bar, 3-stage checklist)
+     - Results grid: Document Authenticity (pass/fail), Tampering Detection (clean/tampered), OCR Confidence (circular SVG score indicator)
+   - **Step 3 — Home Office Validation**:
+     - "Connect to Home Office API" start button
+     - Animated connection with staggered check results (3.6s total):
+       - Visa Grant Validity (1.2s delay)
+       - UK Residence Data (2.4s delay)
+       - Immigration Permissions (3.6s delay)
+     - Each check shows pending spinner → verified badge
+     - Complete result card with check date and reference number
+   - **Step 4 — Status & Visa Verification**:
+     - Auto-triggered status parsing animation
+     - Immigration status badge: Permanent Right to Rent (emerald, BadgeCheck icon) or Time-Limited Status (amber, Timer icon)
+     - Spring animation for status badge entrance
+     - Visa details cards (type + expiry date)
+     - Parsed restrictions list with staggered animation
+     - Status verification summary
+   - **Step 5 — Risk & Compliance Assessment**:
+     - "Run Compliance Rules Engine" start button
+     - Rules engine running animation (spinning Zap icon, progress bar)
+     - Large compliance result badge: COMPLIANT / REVIEW REQUIRED / NON-COMPLIANT
+     - Statutory Guidelines Checklist (8 checks with pass/fail badges)
+     - Risk Assessment Summary with statutory met badge
+   - **Step 6 — Evidence Generation & Certification**:
+     - "Generate Evidence Trail" start button
+     - Evidence generating animation (spinning Lock icon, progress bar)
+     - Immutable Proof Log display (5 timestamped entries with evidence reference)
+     - Certificate Preview card (white card with border):
+       - Certificate token, evidence reference, issue date, expiry date
+       - Cryptographically signed badge
+     - "Issue Certificate" button → generates token and dates
+     - Download Certificate button (after issuance)
+   - **Step 7 — Continuous Expiry Monitoring**:
+     - "Activate Continuous Monitoring" start button
+     - Monitoring Dashboard with 3 status cards:
+       - Days to Expiry (large number, color-coded)
+       - Alert Status badge (None/Warning/Critical/Expired)
+       - Monitoring Active toggle (Switch component)
+     - Alert History timeline (3 mock entries with type icons)
+     - Dual-Sided Workflow Tracker (agent + applicant view):
+       - Agent: 5-step checklist (Check Initiated → Monitoring Active)
+       - Applicant: 5-step checklist (Verification Request → Expiry Notifications)
+     - "Process Complete" badge
+   - **State Management**: Comprehensive RTRStepData type with all step fields, INITIAL_STEP_DATA constant
+   - **Navigation**: goToStep(), nextStep(), prevStep() with completed steps tracking
+   - **Simulation Functions**: simulateOCR (3s), simulateHomeOffice (4.5s staggered), simulateStatusVerification (1.5s), simulateRiskAssessment (3.5s), simulateEvidenceGeneration (2.5s), issueCertificate, activateMonitoring
+   - Color scheme: teal/emerald primary, amber for pending, red for failed, violet for monitoring
+
+2. **`/home/z/my-project/src/app/api/rtr-process/route.ts`** - Right to Rent process API:
+   - **GET**: List RTR processes with filtering (status, profileId, propertyId, limit, offset)
+     - Returns processes array, total count, summary breakdowns (byStatus, byComplianceResult, byAlertStatus, withCertificate, monitoringActive, totalProcessed)
+   - **POST**: Create new RTR process
+     - Required: initiatedBy field
+     - Optional: profileId, agentId, propertyId, checkReason, visaType
+     - Returns created process with 201 status
+   - **PATCH**: Update RTR process step/status
+     - Required: id field
+     - Supports updating all step fields across 7 steps
+     - Validates process exists (404 if not found)
+     - Returns updated process
+   - Uses `import { db } from '@/lib/db'` for Prisma ORM access
+
+3. **`/home/z/my-project/src/components/platform/PropertyIntelligence.tsx`** - Updated with Tabs:
+   - Added ShieldCheck icon import
+   - Added RightToRentFlow import
+   - Wrapped existing content in `<Tabs defaultValue="properties">` with two tabs:
+     - "Properties" tab (Building2 icon): Shows existing property cards, applications table, Right to Rent status, Guarantor Replacement, and Market Intelligence
+     - "Right to Rent" tab (ShieldCheck icon): Shows the new RightToRentFlow component
+   - TabsList responsive: full-width on mobile, auto-width on sm+
+
+### Key Design Decisions
+- Vertical timeline stepper on desktop provides clear step progression with clickable navigation
+- Each step simulates real-world verification with animated progress (OCR, Home Office, Rules Engine)
+- Permanent vs Time-Limited status distinction drives certificate expiry and monitoring behavior
+- Dual-sided workflow tracker shows both agent and applicant perspectives
+- Certificate preview uses white card on gradient background for visual distinction
+- All simulations use staggered timeouts for realistic feel
+- Immigration Act 2014 Section 22 referenced throughout for regulatory compliance
+- Emerald/teal color scheme maintained consistently with project conventions
+
+### Verification
+- Lint passes with no errors on all new/modified files
+- Dev server running with 200 responses
+- RTR Process API: GET returns processes + summary, POST creates process, PATCH updates process fields
+- All 7 steps functional with animated transitions between steps
+- Tabs in Property Intelligence section working correctly

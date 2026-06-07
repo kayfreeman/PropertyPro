@@ -18,6 +18,8 @@ import {
   ChevronRight,
   CreditCard,
   Globe,
+  Users,
+  UserPlus,
 } from 'lucide-react';
 import {
   Card,
@@ -31,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -41,6 +44,7 @@ import {
 } from '@/components/ui/table';
 import { useApi } from '@/hooks/use-api';
 import { TRUST_LEVELS, formatDate, getStatusStyle } from '@/lib/platform-data';
+import VerifyMeOnboarding from '@/components/platform/VerifyMeOnboarding';
 
 // Types
 interface Credential {
@@ -175,6 +179,7 @@ const panelVariants = {
 
 export default function IdentityTrust() {
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('profiles');
   const { data: identitiesData, isLoading } = useApi<IdentitiesResponse>('identities', '/api/identities');
 
   const identities = identitiesData?.identities ?? [];
@@ -182,7 +187,21 @@ export default function IdentityTrust() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+      {/* Tabs: Profiles | Onboarding */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-2">
+          <TabsTrigger value="profiles" className="gap-1.5">
+            <Users className="size-3.5" />
+            Profiles
+          </TabsTrigger>
+          <TabsTrigger value="onboarding" className="gap-1.5">
+            <UserPlus className="size-3.5" />
+            Onboarding
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="profiles">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         {/* Trust Ladder Visualization */}
         <motion.div
           initial="hidden"
@@ -572,7 +591,13 @@ export default function IdentityTrust() {
             </Card>
           )}
         </div>
-      </div>
+        </div>
+        </TabsContent>
+
+        <TabsContent value="onboarding">
+          <VerifyMeOnboarding />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

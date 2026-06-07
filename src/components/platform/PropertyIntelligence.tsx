@@ -21,6 +21,7 @@ import {
   Eye,
   UserCheck,
   RefreshCw,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   Card,
@@ -48,6 +49,7 @@ import {
   getStatusStyle,
   formatDate,
 } from '@/lib/platform-data';
+import RightToRentFlow from '@/components/platform/RightToRentFlow';
 
 // Types based on API response
 interface PropertyApplication {
@@ -238,6 +240,20 @@ export default function PropertyIntelligence() {
       initial="hidden"
       animate="visible"
     >
+      {/* Top Tabs: Properties / Right to Rent */}
+      <Tabs defaultValue="properties" className="w-full">
+        <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="properties" className="gap-2">
+            <Building2 className="size-4" />
+            Properties
+          </TabsTrigger>
+          <TabsTrigger value="right-to-rent" className="gap-2">
+            <ShieldCheck className="size-4" />
+            Right to Rent
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="properties" className="mt-6 space-y-6">
       {/* Property Overview Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <motion.div variants={fadeInUp}>
@@ -681,6 +697,12 @@ export default function PropertyIntelligence() {
           </CardContent>
         </Card>
       </motion.div>
+        </TabsContent>
+
+        <TabsContent value="right-to-rent" className="mt-6">
+          <RightToRentFlow />
+        </TabsContent>
+      </Tabs>
     </motion.div>
   );
 }

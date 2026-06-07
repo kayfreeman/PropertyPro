@@ -14,7 +14,6 @@ import {
   Newspaper,
   UserCheck,
   ArrowRight,
-  ChevronDown,
   MoreHorizontal,
   Filter,
 } from 'lucide-react';
@@ -48,6 +47,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useApi } from '@/hooks/use-api';
 import {
   COMPLIANCE_TYPES,
@@ -55,6 +55,7 @@ import {
   getStatusStyle,
   formatDate,
 } from '@/lib/platform-data';
+import AMLWorkflow from '@/components/platform/AMLWorkflow';
 
 // ── Types ──────────────────────────────────────────────────
 interface ComplianceCheck {
@@ -184,8 +185,8 @@ function ProgressRing({ value, size = 40, strokeWidth = 4, color = '#10b981' }: 
   );
 }
 
-// ── Main Component ─────────────────────────────────────────
-export default function ComplianceAutomation() {
+// ── Compliance Checks Tab Content ──────────────────────────
+function ComplianceChecksTab() {
   const { data, isLoading } = useApi<ComplianceResponse>('compliance', '/api/compliance');
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
@@ -233,7 +234,7 @@ export default function ComplianceAutomation() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i} className="animate-pulse">
@@ -535,5 +536,31 @@ export default function ComplianceAutomation() {
         </Card>
       </motion.div>
     </div>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────
+export default function ComplianceAutomation() {
+  return (
+    <Tabs defaultValue="checks" className="space-y-6">
+      <TabsList className="bg-muted/60">
+        <TabsTrigger value="checks" className="gap-1.5 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+          <FileCheck className="size-3.5" />
+          Compliance Checks
+        </TabsTrigger>
+        <TabsTrigger value="aml" className="gap-1.5 data-[state=active]:bg-teal-50 data-[state=active]:text-teal-700">
+          <ShieldCheck className="size-3.5" />
+          AML Workflow
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="checks">
+        <ComplianceChecksTab />
+      </TabsContent>
+
+      <TabsContent value="aml">
+        <AMLWorkflow />
+      </TabsContent>
+    </Tabs>
   );
 }

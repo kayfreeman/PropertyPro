@@ -64,6 +64,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatDate, formatDateTime } from '@/lib/platform-data';
+import { useApi } from '@/hooks/use-api';
+import { TRUST_LEVELS, getStatusStyle } from '@/lib/platform-data';
+import { getNationalityByCode } from '@/lib/countries';
 
 // ── Step Definitions ──────────────────────────────────────
 const STEPS = [
@@ -76,14 +79,24 @@ const STEPS = [
   { id: 7, name: 'SAR Generation', shortName: 'SAR', icon: FileWarning, color: '#be185d' },
 ];
 
-// ── Simulated Profiles ────────────────────────────────────
-const MOCK_PROFILES = [
-  { id: 'prof_001', name: 'James Whitfield', email: 'j.whitfield@example.co.uk', trustLevel: 4, kycStatus: 'verified', nationality: 'British' },
-  { id: 'prof_002', name: 'Elena Vasquez', email: 'e.vasquez@example.es', trustLevel: 3, kycStatus: 'verified', nationality: 'Spanish' },
-  { id: 'prof_003', name: 'Viktor Petrov', email: 'v.petrov@example.ru', trustLevel: 1, kycStatus: 'pending', nationality: 'Russian' },
-  { id: 'prof_004', name: 'Amina Hassan', email: 'a.hassan@example.ae', trustLevel: 2, kycStatus: 'verified', nationality: 'Emirati' },
-  { id: 'prof_005', name: 'Chen Wei', email: 'c.wei@example.cn', trustLevel: 3, kycStatus: 'failed', nationality: 'Chinese' },
-];
+// ── Identity & Trust Profile Types (from API) ────────────────
+interface IdentityProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  trustLevel: number;
+  trustScore: number;
+  status: string;
+  nationality: string | null;
+  credentials: { id: string; credentialType: string; verificationStatus: string; validTo: string | null }[];
+  verifications: { id: string; verificationType: string; status: string; confidence: number; completedAt: string | null }[];
+}
+
+interface IdentitiesResponse {
+  identities: IdentityProfile[];
+  total: number;
+}
 
 // ── Types ─────────────────────────────────────────────────
 type StepStatus = 'pending' | 'active' | 'completed' | 'failed';
@@ -244,6 +257,10 @@ export default function AMLWorkflow() {
     1: 'active', 2: 'pending', 3: 'pending', 4: 'pending', 5: 'pending', 6: 'pending', 7: 'pending',
   });
 
+  // Fetch identity profiles from the Identity & Trust module
+  const { data: identitiesData, isLoading: identitiesLoading } = useApi<IdentitiesResponse>('identities', '/api/identities');
+  const identityProfiles = identitiesData?.identities ?? [];
+
   // Step data
   const [transaction, setTransaction] = useState<TransactionData>({
     reference: generateTransactionRef(),
@@ -253,8 +270,9 @@ export default function AMLWorkflow() {
     initialized: false,
     initializedAt: null,
   });
-  const [identity, setIdentity] = useState<IdentityData>({
+  const [identity, setIdentity] = useState<IdentityData & { trustScore: number; nationality: string; verifications: { verificationType: string; status: string; confidence: number }[]; credentials: { credentialType: string; verificationStatus: string }[] }>({
     selectedProfile: null, profileName: '', kycStatus: 'pending', trustLevel: 0, verified: false,
+    trustScore: 0, nationality: '', verifications: [], credentials: [],
   });
   const [cdd, setCDD] = useState<CDDData>({
     triggered: false, riskClassification: 'standard', riskFactors: [], complete: false,
@@ -295,28 +313,33 @@ export default function AMLWorkflow() {
     }, 1800);
   }, []);
 
-  // ── Step 2: Identity Verification ─────────────────────
+  // ── Step 2: Identity Verification (feeds from Identity & Trust module) ──
   const handleVerifyIdentity = useCallback(() => {
     if (!identity.selectedProfile) return;
     setIsProcessing(true);
     setTimeout(() => {
-      const profile = MOCK_PROFILES.find(p => p.id === identity.selectedProfile);
+      const profile = identityProfiles.find(p => p.id === identity.selectedProfile);
       if (profile) {
+        const kycStatus = profile.status === 'verified' ? 'verified' as const : profile.status === 'rejected' || profile.status === 'failed' ? 'failed' as const : 'pending' as const;
         setIdentity(prev => ({
           ...prev,
-          profileName: profile.name,
-          kycStatus: profile.kycStatus as 'pending' | 'verified' | 'failed',
+          profileName: `${profile.firstName} ${profile.lastName}`,
+          kycStatus,
           trustLevel: profile.trustLevel,
-          verified: profile.kycStatus === 'verified',
+          trustScore: profile.trustScore,
+          nationality: profile.nationality ?? '',
+          verifications: profile.verifications.map(v => ({ verificationType: v.verificationType, status: v.status, confidence: v.confidence })),
+          credentials: profile.credentials.map(c => ({ credentialType: c.credentialType, verificationStatus: c.verificationStatus })),
+          verified: kycStatus === 'verified',
         }));
-        if (profile.kycStatus === 'verified') {
+        if (kycStatus === 'verified') {
           setStepStatuses(prev => ({ ...prev, 2: 'completed', 3: 'active' }));
           setCurrentStep(3);
         }
       }
       setIsProcessing(false);
     }, 1500);
-  }, [identity.selectedProfile]);
+  }, [identity.selectedProfile, identityProfiles]);
 
   // ── Step 3: CDD ──────────────────────────────────────
   const handleTriggerCDD = useCallback(() => {
@@ -523,6 +546,8 @@ export default function AMLWorkflow() {
           setIdentity={setIdentity}
           onVerify={handleVerifyIdentity}
           isProcessing={isProcessing}
+          identityProfiles={identityProfiles}
+          identitiesLoading={identitiesLoading}
         />;
       case 3:
         return <Step3CDD
@@ -868,19 +893,25 @@ function Step1Transaction({
 }
 
 // ════════════════════════════════════════════════════════════
-// STEP 2: Identity Verification Integration
+// STEP 2: Identity Verification Integration (fed from Identity & Trust Module)
 // ════════════════════════════════════════════════════════════
 function Step2Identity({
   identity,
   setIdentity,
   onVerify,
   isProcessing,
+  identityProfiles,
+  identitiesLoading,
 }: {
-  identity: IdentityData;
-  setIdentity: React.Dispatch<React.SetStateAction<IdentityData>>;
+  identity: IdentityData & { trustScore: number; nationality: string; verifications: { verificationType: string; status: string; confidence: number }[]; credentials: { credentialType: string; verificationStatus: string }[] };
+  setIdentity: React.Dispatch<React.SetStateAction<typeof identity>>;
   onVerify: () => void;
   isProcessing: boolean;
+  identityProfiles: IdentityProfile[];
+  identitiesLoading: boolean;
 }) {
+  const selectedApiProfile = identityProfiles.find(p => p.id === identity.selectedProfile);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Profile Selector */}
@@ -892,57 +923,92 @@ function Step2Identity({
             </div>
             <div>
               <CardTitle className="text-lg">Identity Verification Integration</CardTitle>
-              <CardDescription>Cross-reference participant&apos;s verified identity profile</CardDescription>
+              <CardDescription>Cross-reference verified identity from Identity & Trust module</CardDescription>
             </div>
+          </div>
+          {/* Identity Source Badge */}
+          <div className="mt-2">
+            <Badge className="text-[10px] gap-1 bg-teal-50 text-teal-700 border-teal-200 border">
+              <ShieldCheck className="size-3" />
+              Source: Identity & Trust Module
+            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label className="text-sm font-medium">Select Identity Profile</Label>
-            <Select
-              value={identity.selectedProfile || ''}
-              onValueChange={(val) => {
-                const profile = MOCK_PROFILES.find(p => p.id === val);
-                if (profile) {
-                  setIdentity(prev => ({
-                    ...prev,
-                    selectedProfile: val,
-                    profileName: profile.name,
-                    kycStatus: profile.kycStatus as 'pending' | 'verified' | 'failed',
-                    trustLevel: profile.trustLevel,
-                  }));
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Search or select a profile..." />
-              </SelectTrigger>
-              <SelectContent>
-                {MOCK_PROFILES.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <div className="flex items-center gap-2">
-                      <span>{p.name}</span>
-                      <Badge variant="outline" className="text-[10px]">
-                        Level {p.trustLevel}
-                      </Badge>
+            {identitiesLoading ? (
+              <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50">
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Loading identity profiles...</span>
+              </div>
+            ) : (
+              <Select
+                value={identity.selectedProfile || ''}
+                onValueChange={(val) => {
+                  const profile = identityProfiles.find(p => p.id === val);
+                  if (profile) {
+                    const kycStatus = profile.status === 'verified' ? 'verified' as const : profile.status === 'rejected' || profile.status === 'failed' ? 'failed' as const : 'pending' as const;
+                    setIdentity(prev => ({
+                      ...prev,
+                      selectedProfile: val,
+                      profileName: `${profile.firstName} ${profile.lastName}`,
+                      kycStatus,
+                      trustLevel: profile.trustLevel,
+                      trustScore: profile.trustScore,
+                      nationality: profile.nationality ?? '',
+                      verifications: profile.verifications.map(v => ({ verificationType: v.verificationType, status: v.status, confidence: v.confidence })),
+                      credentials: profile.credentials.map(c => ({ credentialType: c.credentialType, verificationStatus: c.verificationStatus })),
+                    }));
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Search or select a profile..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {identityProfiles.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                      No identity profiles found. Create profiles in Identity & Trust first.
                     </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  ) : (
+                    identityProfiles.map((p) => {
+                      const trustLevelData = TRUST_LEVELS[p.trustLevel] ?? TRUST_LEVELS[0];
+                      return (
+                        <SelectItem key={p.id} value={p.id}>
+                          <div className="flex items-center gap-2">
+                            <span>{p.firstName} {p.lastName}</span>
+                            <Badge variant="outline" className="text-[10px] px-1" style={{ color: trustLevelData.color, borderColor: trustLevelData.color + '40', backgroundColor: trustLevelData.bgColor }}>
+                              L{p.trustLevel}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] px-1" style={(() => { const s = getStatusStyle(p.status); return { color: s.color, borderColor: s.color + '40', backgroundColor: s.bgColor }; })()}>
+                              {p.status}
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
-          {/* Profile Preview */}
-          {identity.selectedProfile && (
+          {/* Profile Preview - enriched with Identity & Trust data */}
+          {identity.selectedProfile && selectedApiProfile && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="size-10 rounded-full bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">
                   {identity.profileName.split(' ').map(n => n[0]).join('')}
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="font-semibold">{identity.profileName}</p>
-                  <p className="text-xs text-muted-foreground">{MOCK_PROFILES.find(p => p.id === identity.selectedProfile)?.email}</p>
+                  <p className="text-xs text-muted-foreground">{selectedApiProfile.email}</p>
                 </div>
+                <Badge className="text-[10px] gap-1 bg-teal-50 text-teal-700 border-teal-200 border shrink-0">
+                  <ShieldCheck className="size-3" />
+                  I&T Module
+                </Badge>
               </div>
               <Separator />
               <div className="grid grid-cols-2 gap-2 text-sm">
@@ -964,12 +1030,63 @@ function Step2Identity({
                 <div>
                   <span className="text-muted-foreground text-xs">Trust Level</span>
                   <div className="mt-0.5">
-                    <Badge className="text-xs border-0" style={{ color: '#0d9488', backgroundColor: '#f0fdfa' }}>
-                      Level {identity.trustLevel}
+                    <Badge className="text-xs border-0" style={{ color: (TRUST_LEVELS[identity.trustLevel] ?? TRUST_LEVELS[0]).color, backgroundColor: (TRUST_LEVELS[identity.trustLevel] ?? TRUST_LEVELS[0]).bgColor }}>
+                      L{identity.trustLevel} — {(TRUST_LEVELS[identity.trustLevel] ?? TRUST_LEVELS[0]).name}
                     </Badge>
                   </div>
                 </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Trust Score</span>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <Progress value={identity.trustScore} className="h-1.5 w-14" />
+                    <span className="text-xs font-semibold">{identity.trustScore}</span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Nationality</span>
+                  <div className="mt-0.5 text-xs font-medium">
+                    {identity.nationality ? getNationalityByCode(identity.nationality) : '—'}
+                  </div>
+                </div>
               </div>
+
+              {/* Verification records from Identity & Trust */}
+              {identity.verifications.length > 0 && (
+                <div className="mt-2">
+                  <span className="text-xs text-muted-foreground font-medium">Verification Records (from I&T Module)</span>
+                  <div className="mt-1 space-y-1 max-h-24 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                    {identity.verifications.slice(0, 5).map((v, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{v.verificationType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
+                        <div className="flex items-center gap-1">
+                          <Progress value={v.confidence} className="h-1 w-10" />
+                          <span className="font-medium">{v.confidence}%</span>
+                        </div>
+                      </div>
+                    ))}
+                    {identity.verifications.length > 5 && (
+                      <span className="text-[10px] text-muted-foreground">+{identity.verifications.length - 5} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Credentials from Identity & Trust */}
+              {identity.credentials.length > 0 && (
+                <div className="mt-2">
+                  <span className="text-xs text-muted-foreground font-medium">Credentials (from I&T Module)</span>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {identity.credentials.slice(0, 4).map((c, i) => (
+                      <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0" style={(() => { const s = getStatusStyle(c.verificationStatus); return { color: s.color, borderColor: s.color + '30', backgroundColor: s.bgColor }; })()}>
+                        {c.credentialType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </Badge>
+                    ))}
+                    {identity.credentials.length > 4 && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{identity.credentials.length - 4}</Badge>
+                    )}
+                  </div>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1830,6 +1947,60 @@ function Step6Decision({
         </Card>
       </div>
 
+      {/* Identity & Trust Module Feed Summary */}
+      {identity.selectedProfile && (
+        <Card className="border-teal-200 bg-teal-50/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-teal-100">
+                <ShieldCheck className="size-5 text-teal-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Identity & Trust Module Feed</CardTitle>
+                <CardDescription>Data sourced from the Identity & Trust verification module</CardDescription>
+              </div>
+              <Badge className="ml-auto text-[10px] gap-1 bg-teal-50 text-teal-700 border-teal-200 border">
+                <ShieldCheck className="size-3" />
+                Live Feed
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg border bg-white p-2.5">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Subject</p>
+                <p className="text-sm font-semibold mt-0.5">{identity.profileName || '—'}</p>
+              </div>
+              <div className="rounded-lg border bg-white p-2.5">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Trust Level</p>
+                <div className="mt-0.5">
+                  <Badge className="text-[10px] border-0" style={{ color: (TRUST_LEVELS[identity.trustLevel] ?? TRUST_LEVELS[0]).color, backgroundColor: (TRUST_LEVELS[identity.trustLevel] ?? TRUST_LEVELS[0]).bgColor }}>
+                    L{identity.trustLevel} — {(TRUST_LEVELS[identity.trustLevel] ?? TRUST_LEVELS[0]).name}
+                  </Badge>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-white p-2.5">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">KYC Status</p>
+                <div className="mt-0.5">
+                  <Badge className="text-[10px] border-0" style={{
+                    color: identity.kycStatus === 'verified' ? '#10b981' : identity.kycStatus === 'failed' ? '#ef4444' : '#f59e0b',
+                    backgroundColor: identity.kycStatus === 'verified' ? '#ecfdf5' : identity.kycStatus === 'failed' ? '#fef2f2' : '#fffbeb',
+                  }}>
+                    {identity.kycStatus.charAt(0).toUpperCase() + identity.kycStatus.slice(1)}
+                  </Badge>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-white p-2.5">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Risk Influence</p>
+                <p className="text-xs font-medium mt-0.5 text-muted-foreground">
+                  {identity.trustLevel >= 3 ? 'Low risk (high trust)' : identity.trustLevel >= 1 ? 'Standard risk' : 'High risk (low trust)'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Decision Action */}
       {decision.result === 'pending' ? (
         <Card>
@@ -2036,7 +2207,7 @@ function Step7SAR({
               <p className="ml-4"><span className="text-pink-600">&quot;sarReference&quot;</span>: <span className="text-emerald-600">&quot;{sar.reference}&quot;</span>,</p>
               <p className="ml-4"><span className="text-pink-600">&quot;transactionRef&quot;</span>: <span className="text-emerald-600">&quot;{transaction.reference}&quot;</span>,</p>
               <p className="ml-4"><span className="text-pink-600">&quot;subjectName&quot;</span>: <span className="text-emerald-600">&quot;{identity.profileName}&quot;</span>,</p>
-              <p className="ml-4"><span className="text-pink-600">&quot;subjectNationality&quot;</span>: <span className="text-emerald-600">&quot;{MOCK_PROFILES.find(p => p.id === identity.selectedProfile)?.nationality || 'Unknown'}&quot;</span>,</p>
+              <p className="ml-4"><span className="text-pink-600">&quot;subjectNationality&quot;</span>: <span className="text-emerald-600">&quot;{identity.nationality ? getNationalityByCode(identity.nationality) : 'Unknown'}&quot;</span>,</p>
               <p className="ml-4"><span className="text-pink-600">&quot;transactionAmount&quot;</span>: <span className="text-amber-600">{transaction.amount}</span>,</p>
               <p className="ml-4"><span className="text-pink-600">&quot;decisionResult&quot;</span>: <span className="text-emerald-600">&quot;{decision.result}&quot;</span>,</p>
               <p className="ml-4"><span className="text-pink-600">&quot;amlRiskScore&quot;</span>: <span className="text-amber-600">{decision.amlRiskScore}</span>,</p>

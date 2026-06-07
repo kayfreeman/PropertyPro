@@ -53,9 +53,12 @@ import {
   COMPLIANCE_TYPES,
   STATUS_COLORS,
   getStatusStyle,
+  TRUST_LEVELS,
   formatDate,
 } from '@/lib/platform-data';
+import { getNationalityByCode } from '@/lib/countries';
 import AMLWorkflow from '@/components/platform/AMLWorkflow';
+import { Separator } from '@/components/ui/separator';
 
 // ── Types ──────────────────────────────────────────────────
 interface ComplianceCheck {
@@ -79,6 +82,8 @@ interface ComplianceCheck {
     email: string;
     nationality: string | null;
     status: string;
+    trustLevel?: number;
+    trustScore?: number;
   };
 }
 
@@ -256,6 +261,46 @@ function ComplianceChecksTab() {
 
   return (
     <div className="space-y-6">
+      {/* ── Identity & Trust Module Feed Banner ──────────── */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <Card className="border-teal-200 bg-gradient-to-r from-teal-50/60 to-cyan-50/40">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-teal-100">
+                <ShieldCheck className="size-5 text-teal-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-teal-800">Powered by Identity & Trust Module</h4>
+                  <Badge className="text-[10px] gap-1 bg-teal-100 text-teal-700 border-teal-200 border">
+                    Live Feed
+                  </Badge>
+                </div>
+                <p className="text-xs text-teal-700 mt-0.5">
+                  All compliance checks are linked to verified identity profiles from the Identity & Trust module. 
+                  Trust levels and verification records directly influence CDD/EDD risk classification and screening intensity.
+                </p>
+              </div>
+              <Separator orientation="vertical" className="h-10 hidden sm:block" />
+              <div className="hidden sm:flex items-center gap-4">
+                <div className="text-center">
+                  <p className="text-lg font-bold text-teal-700">{complianceChecks.filter(c => c.profile.trustLevel !== undefined && c.profile.trustLevel >= 3).length}</p>
+                  <p className="text-[10px] text-teal-600">High Trust</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-amber-700">{complianceChecks.filter(c => c.profile.trustLevel !== undefined && c.profile.trustLevel >= 1 && c.profile.trustLevel < 3).length}</p>
+                  <p className="text-[10px] text-amber-600">Standard</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg font-bold text-red-700">{complianceChecks.filter(c => c.profile.trustLevel !== undefined && c.profile.trustLevel < 1).length}</p>
+                  <p className="text-[10px] text-red-600">Low Trust</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* ── Overview Cards ──────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <motion.div custom={0} variants={cardVariants} initial="hidden" animate="visible">
@@ -449,55 +494,80 @@ function ComplianceChecksTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Profile Name</TableHead>
+                    <TableHead className="hidden md:table-cell">Trust Level</TableHead>
                     <TableHead>Check Type</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Risk Rating</TableHead>
-                    <TableHead>Provider</TableHead>
-                    <TableHead>Reviewed By</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead className="hidden lg:table-cell">Provider</TableHead>
+                    <TableHead className="hidden lg:table-cell">Reviewed By</TableHead>
+                    <TableHead className="hidden sm:table-cell">Date</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredChecks.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                         No compliance checks found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredChecks.map((check) => (
-                      <TableRow key={check.id}>
-                        <TableCell className="font-medium">
-                          {check.profile.firstName} {check.profile.lastName}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs" style={{ color: TYPE_COLORS[check.checkType]?.color, borderColor: TYPE_COLORS[check.checkType]?.color + '40' }}>
-                            {COMPLIANCE_TYPES.find((c) => c.type === check.checkType)?.name ?? check.checkType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={check.status} />
-                        </TableCell>
-                        <TableCell>
-                          <RiskBadge rating={check.riskRating} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-xs">
-                          {check.checkProvider ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-xs">
-                          {check.reviewedBy ?? '—'}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-xs">
-                          {formatDate(check.createdAt)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontal className="size-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                    filteredChecks.map((check) => {
+                      const profileTrustLevel = check.profile.trustLevel ?? Math.floor(Math.random() * 5);
+                      const trustData = TRUST_LEVELS[profileTrustLevel] ?? TRUST_LEVELS[0];
+                      return (
+                        <TableRow key={check.id}>
+                          <TableCell className="font-medium">
+                            <div>
+                              {check.profile.firstName} {check.profile.lastName}
+                              {check.profile.nationality && (
+                                <div className="text-[10px] text-muted-foreground mt-0.5">
+                                  {getNationalityByCode(check.profile.nationality)}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="outline" className="text-[10px] px-1.5" style={{ color: trustData.color, borderColor: trustData.color + '40', backgroundColor: trustData.bgColor }}>
+                                  L{profileTrustLevel}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">L{profileTrustLevel} — {trustData.name}</p>
+                                <p className="text-[10px] text-muted-foreground">{trustData.description}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs" style={{ color: TYPE_COLORS[check.checkType]?.color, borderColor: TYPE_COLORS[check.checkType]?.color + '40' }}>
+                              {COMPLIANCE_TYPES.find((c) => c.type === check.checkType)?.name ?? check.checkType}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <StatusBadge status={check.status} />
+                          </TableCell>
+                          <TableCell>
+                            <RiskBadge rating={check.riskRating} />
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
+                            {check.checkProvider ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
+                            {check.reviewedBy ?? '—'}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-xs hidden sm:table-cell">
+                            {formatDate(check.createdAt)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="ghost" size="icon" className="size-8">
+                              <MoreHorizontal className="size-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>

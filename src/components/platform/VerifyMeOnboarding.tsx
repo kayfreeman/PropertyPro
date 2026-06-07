@@ -58,6 +58,8 @@ import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import CountrySelect, { CountryNameSelect } from '@/components/ui/country-select';
+import { getNationalityByCode } from '@/lib/countries';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -135,21 +137,7 @@ const STEPS = [
   { id: 10, title: 'Agent Review', icon: UserCheck, description: 'Final digital review' },
 ];
 
-const COUNTRIES = [
-  { value: 'NG', label: 'Nigeria' },
-  { value: 'IN', label: 'India' },
-  { value: 'PK', label: 'Pakistan' },
-  { value: 'BD', label: 'Bangladesh' },
-  { value: 'ZA', label: 'South Africa' },
-  { value: 'KE', label: 'Kenya' },
-  { value: 'GH', label: 'Ghana' },
-  { value: 'PH', label: 'Philippines' },
-  { value: 'RO', label: 'Romania' },
-  { value: 'PL', label: 'Poland' },
-  { value: 'BR', label: 'Brazil' },
-  { value: 'CN', label: 'China' },
-  { value: 'OTHER', label: 'Other' },
-];
+
 
 // ─── Circular Gauge Component ────────────────────────────────────────────────
 
@@ -550,16 +538,12 @@ export default function VerifyMeOnboarding() {
       </div>
       <div className="space-y-2">
         <Label>Nationality</Label>
-        <Select value={state.nationality} onValueChange={v => updateState('nationality', v)} disabled={state.accountCreated}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select nationality" />
-          </SelectTrigger>
-          <SelectContent>
-            {COUNTRIES.map(c => (
-              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CountrySelect
+          value={state.nationality}
+          onValueChange={v => updateState('nationality', v)}
+          placeholder="Search nationality..."
+          disabled={state.accountCreated}
+        />
       </div>
 
       <Separator />
@@ -924,16 +908,11 @@ export default function VerifyMeOnboarding() {
     <div className="space-y-6">
       <div className="space-y-2">
         <Label>Source Country for Database Verification</Label>
-        <Select value={state.sourceCountry} onValueChange={v => updateState('sourceCountry', v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select source country" />
-          </SelectTrigger>
-          <SelectContent>
-            {COUNTRIES.map(c => (
-              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <CountryNameSelect
+          value={state.sourceCountry}
+          onValueChange={v => updateState('sourceCountry', v)}
+          placeholder="Search source country..."
+        />
       </div>
 
       {state.sourceCountry && (
@@ -947,7 +926,16 @@ export default function VerifyMeOnboarding() {
             label={
               state.sourceCountry === 'NG' ? 'NIN (National Identification Number)' :
               state.sourceCountry === 'IN' ? 'Aadhaar Verification' :
-              `National ID Database (${state.sourceCountry})`
+              state.sourceCountry === 'PK' ? 'NADRA (National Database & Registration Authority)' :
+              state.sourceCountry === 'BD' ? 'NID (National Identity Card)' :
+              state.sourceCountry === 'GH' ? 'Ghana Card Verification' :
+              state.sourceCountry === 'KE' ? 'Huduma Namba Verification' :
+              state.sourceCountry === 'PH' ? 'PhilSys (Philippine Identification System)' :
+              state.sourceCountry === 'CN' ? 'National ID Card (居民身份证)' :
+              state.sourceCountry === 'BR' ? 'CPF (Cadastro de Pessoas Físicas)' :
+              state.sourceCountry === 'AE' ? 'UAE National ID' :
+              state.sourceCountry === 'SA' ? 'National ID (الهوية الوطنية)' :
+              `National ID Database (${getNationalityByCode(state.sourceCountry)})`
             }
             result={state.sourceCountryDbResult}
           />

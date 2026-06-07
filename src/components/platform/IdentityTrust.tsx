@@ -20,6 +20,7 @@ import {
   Globe,
   Users,
   UserPlus,
+  ArrowRight,
 } from 'lucide-react';
 import {
   Card,
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
@@ -316,10 +318,21 @@ export default function IdentityTrust() {
                     {isLoading ? 'Loading...' : `${identities.length} profiles registered`}
                   </CardDescription>
                 </div>
-                <Badge variant="outline" className="text-xs">
-                  <User className="mr-1 size-3" />
-                  {identities.length}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    <User className="mr-1 size-3" />
+                    {identities.length}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => setActiveTab('onboarding')}
+                  >
+                    <UserPlus className="size-3.5" />
+                    <span className="hidden sm:inline">New Onboarding</span>
+                    <span className="sm:hidden">Onboard</span>
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -365,7 +378,26 @@ export default function IdentityTrust() {
                           onClick={() => setSelectedProfileId(isSelected ? null : profile.id)}
                         >
                           <TableCell className="font-medium">
-                            {profile.firstName} {profile.lastName}
+                            <div className="flex items-center gap-2">
+                              {profile.firstName} {profile.lastName}
+                              {profile.status === 'verified' && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveTab('onboarding');
+                                      }}
+                                    >
+                                      Complete Onboarding
+                                      <ArrowRight className="size-3" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Continue to VerifyMe onboarding flow</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {profile.email}
@@ -586,6 +618,16 @@ export default function IdentityTrust() {
                   <p className="mt-1 text-xs text-muted-foreground/70">
                     Click on an identity profile above to view verification details and credentials
                   </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 gap-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                    onClick={() => setActiveTab('onboarding')}
+                  >
+                    <UserPlus className="size-3.5" />
+                    Start New Onboarding
+                    <ArrowRight className="size-3.5" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>

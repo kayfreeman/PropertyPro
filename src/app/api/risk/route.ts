@@ -1,9 +1,42 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getDataScope } from "@/lib/rbac";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+    const role = searchParams.get("role") as string | null;
+
+    const scope = getDataScope((role as Parameters<typeof getDataScope>[0]) ?? "tenant");
+
+    // partner_user cannot see risk data
+    if (scope === "partner_only") {
+      return NextResponse.json({ riskScores: [], fraudAlerts: [], summary: { riskCategories: [], alertSeverity: {}, alertStatus: {} } });
+    }
+
+    // Tenant users with no userId: return empty data (data isolation)
+    if (scope === "own" && !userId) {
+      return NextResponse.json({ riskScores: [], fraudAlerts: [], summary: { riskCategories: [], alertSeverity: {}, alertStatus: {} } });
+    }
+
+    // Tenant users: find their profile first, then filter by that profileId
+    let riskWhere: Record<string, unknown> = {};
+    let fraudWhere: Record<string, unknown> = {};
+    if (scope === "own" && userId) {
+      const profile = await db.identityProfile.findFirst({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!profile) {
+        return NextResponse.json({ riskScores: [], fraudAlerts: [], summary: { riskCategories: [], alertSeverity: {}, alertStatus: {} } });
+      }
+      riskWhere = { profileId: profile.id };
+      fraudWhere = { relatedProfileId: profile.id };
+    }
+
     const riskScores = await db.riskScore.findMany({
+      where: riskWhere,
       orderBy: { createdAt: "desc" },
       include: {
         profile: {
@@ -21,6 +54,7 @@ export async function GET() {
     });
 
     const fraudAlerts = await db.fraudAlert.findMany({
+      where: fraudWhere,
       orderBy: { createdAt: "desc" },
     });
 
@@ -54,17 +88,20 @@ export async function GET() {
     // Risk summary
     const riskCategoryBreakdown = await db.riskScore.groupBy({
       by: ["riskCategory"],
+      where: riskWhere,
       _count: { riskCategory: true },
       _avg: { overallScore: true, fraudProbability: true },
     });
 
     const alertSeverityBreakdown = await db.fraudAlert.groupBy({
       by: ["severity"],
+      where: fraudWhere,
       _count: { severity: true },
     });
 
     const alertStatusBreakdown = await db.fraudAlert.groupBy({
       by: ["status"],
+      where: fraudWhere,
       _count: { status: true },
     });
 

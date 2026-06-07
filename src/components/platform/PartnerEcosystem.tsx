@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useApi } from '@/hooks/use-api';
+import { useSession } from 'next-auth/react';
 import { PARTNER_TYPES, getStatusStyle, formatDate } from '@/lib/platform-data';
 
 // Types
@@ -142,9 +143,15 @@ function PartnerTypeBadge({ type }: { type: string }) {
 }
 
 export default function PartnerEcosystem() {
+  const { data: session } = useSession();
   const { data, isLoading, error } = useApi<PartnersResponse>(
     'partners',
-    '/api/partners'
+    '/api/partners',
+    true,
+    {
+      userId: session?.user?.id || '',
+      role: session?.user?.role || '',
+    }
   );
 
   const partners = data?.partners ?? [];

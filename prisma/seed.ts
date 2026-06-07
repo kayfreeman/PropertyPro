@@ -27,6 +27,137 @@ async function main() {
   // ============================================
   // 1. IDENTITY PROFILES (8)
   // ============================================
+  // ============================================
+  // 0. USERS FIRST (need userId for profile linking)
+  // ============================================
+  const users = await Promise.all([
+    prisma.user.create({
+      data: {
+        email: "admin@propcomply.ai",
+        name: "Sarah Mitchell",
+        passwordHash: "Admin@2024",
+        role: "platform_admin",
+        avatar: "SM",
+        department: "Engineering",
+        jobTitle: "Platform Administrator",
+        phone: "+44 7700 100001",
+        mfaEnabled: true,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-20T09:30:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "compliance@propcomply.ai",
+        name: "David Chen",
+        passwordHash: "Compliance@2024",
+        role: "compliance_officer",
+        avatar: "DC",
+        department: "Compliance",
+        jobTitle: "Senior Compliance Officer",
+        phone: "+44 7700 100002",
+        mfaEnabled: true,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-20T10:15:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "property@propcomply.ai",
+        name: "Emma Roberts",
+        passwordHash: "Property@2024",
+        role: "property_manager",
+        avatar: "ER",
+        department: "Property Operations",
+        jobTitle: "Letting Agent & Property Manager",
+        phone: "+44 7700 100003",
+        mfaEnabled: false,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-19T14:45:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "identity@propcomply.ai",
+        name: "Alex Thompson",
+        passwordHash: "Identity@2024",
+        role: "identity_verifier",
+        avatar: "AT",
+        department: "Identity Operations",
+        jobTitle: "Identity Verification Specialist",
+        phone: "+44 7700 100004",
+        mfaEnabled: true,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-20T08:00:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "risk@propcomply.ai",
+        name: "Michael Brown",
+        passwordHash: "Risk@2024",
+        role: "risk_analyst",
+        avatar: "MB",
+        department: "Risk & Analytics",
+        jobTitle: "Senior Risk Analyst",
+        phone: "+44 7700 100005",
+        mfaEnabled: false,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-20T11:20:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "partner-mgr@propcomply.ai",
+        name: "Rachel Green",
+        passwordHash: "PartnerMgr@2024",
+        role: "partner_integration_manager",
+        avatar: "RG",
+        department: "Partner Operations",
+        jobTitle: "Partner Integration Manager",
+        phone: "+44 7700 100006",
+        mfaEnabled: false,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-18T16:30:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "partner@barclays.ai",
+        name: "Tom Henderson",
+        passwordHash: "Partner@2024",
+        role: "partner_user",
+        avatar: "TH",
+        department: "Partner Relations",
+        jobTitle: "External Partner (Barclays)",
+        phone: "+44 7700 100007",
+        mfaEnabled: false,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-18T14:00:00Z"),
+      },
+    }),
+    prisma.user.create({
+      data: {
+        email: "tenant@example.com",
+        name: "James Wellington",
+        passwordHash: "Tenant@2024",
+        role: "tenant",
+        avatar: "JW",
+        department: "Self-Service",
+        jobTitle: "Tenant / Applicant",
+        phone: "+44 7700 900123",
+        mfaEnabled: false,
+        isActive: true,
+        lastLoginAt: new Date("2024-06-17T12:00:00Z"),
+      },
+    }),
+  ]);
+
+  console.log(`Created ${users.length} users`);
+
+  // ============================================
+  // 1. IDENTITY PROFILES (8)
+  // ============================================
   const profiles = await Promise.all([
     prisma.identityProfile.create({
       data: {
@@ -41,6 +172,7 @@ async function main() {
         status: "verified",
         consentGiven: true,
         gdprCompliant: true,
+        userId: users[7].id, // Linked to tenant user
       },
     }),
     prisma.identityProfile.create({
@@ -471,6 +603,13 @@ async function main() {
   ]);
   console.log(`Created ${partners.length} partners`);
 
+  // Link partner_user to their partner (Barclays)
+  await prisma.user.update({
+    where: { id: users[6].id },
+    data: { partnerId: partners[0].id },
+  });
+  console.log("Linked partner_user to Barclays");
+
   // ============================================
   // 11. PARTNER REFERRALS (6)
   // ============================================
@@ -552,120 +691,7 @@ async function main() {
   console.log(`Created ${configs.length} platform config entries`);
 
   // ============================================
-  // 14. USERS (7 — one per persona)
-  // ============================================
-  const users = await Promise.all([
-    prisma.user.create({
-      data: {
-        email: "admin@propcomply.ai",
-        name: "Sarah Mitchell",
-        passwordHash: "Admin@2024",
-        role: "platform_admin",
-        avatar: "SM",
-        department: "Engineering",
-        jobTitle: "Platform Administrator",
-        phone: "+44 7700 100001",
-        mfaEnabled: true,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-20T09:30:00Z"),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "compliance@propcomply.ai",
-        name: "David Chen",
-        passwordHash: "Compliance@2024",
-        role: "compliance_officer",
-        avatar: "DC",
-        department: "Compliance",
-        jobTitle: "Senior Compliance Officer",
-        phone: "+44 7700 100002",
-        mfaEnabled: true,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-20T10:15:00Z"),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "property@propcomply.ai",
-        name: "Emma Roberts",
-        passwordHash: "Property@2024",
-        role: "property_manager",
-        avatar: "ER",
-        department: "Property Operations",
-        jobTitle: "Letting Agent & Property Manager",
-        phone: "+44 7700 100003",
-        mfaEnabled: false,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-19T14:45:00Z"),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "identity@propcomply.ai",
-        name: "Alex Thompson",
-        passwordHash: "Identity@2024",
-        role: "identity_verifier",
-        avatar: "AT",
-        department: "Identity Operations",
-        jobTitle: "Identity Verification Specialist",
-        phone: "+44 7700 100004",
-        mfaEnabled: true,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-20T08:00:00Z"),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "risk@propcomply.ai",
-        name: "Michael Brown",
-        passwordHash: "Risk@2024",
-        role: "risk_analyst",
-        avatar: "MB",
-        department: "Risk & Analytics",
-        jobTitle: "Senior Risk Analyst",
-        phone: "+44 7700 100005",
-        mfaEnabled: false,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-20T11:20:00Z"),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "partner@barclays.ai",
-        name: "Rachel Green",
-        passwordHash: "Partner@2024",
-        role: "partner_user",
-        avatar: "RG",
-        department: "Partner Relations",
-        jobTitle: "Partner Integration Manager",
-        phone: "+44 7700 100006",
-        mfaEnabled: false,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-18T16:30:00Z"),
-      },
-    }),
-    prisma.user.create({
-      data: {
-        email: "tenant@example.com",
-        name: "James Wellington",
-        passwordHash: "Tenant@2024",
-        role: "tenant",
-        avatar: "JW",
-        department: "Self-Service",
-        jobTitle: "Tenant / Applicant",
-        phone: "+44 7700 900123",
-        mfaEnabled: false,
-        isActive: true,
-        lastLoginAt: new Date("2024-06-17T12:00:00Z"),
-      },
-    }),
-  ]);
-
-  console.log(`Created ${users.length} users`);
-
-  // ============================================
-  // 15. NOTIFICATIONS (10+)
+  // 14. NOTIFICATIONS (10+)
   // ============================================
   const notificationsData = [
     { userId: users[0].id, title: "System Alert", message: "Platform maintenance scheduled for tonight 02:00-04:00 GMT", type: "warning", category: "system", read: false },
@@ -677,10 +703,12 @@ async function main() {
     { userId: users[2].id, title: "New Application Submitted", message: "Amara Okafor submitted a tenancy application for 18 The Broadway, Manchester", type: "info", category: "property", read: false },
     { userId: users[2].id, title: "Right to Rent Expired", message: "Hans Müller Right to Rent check requires renewal", type: "warning", category: "property", read: false },
     { userId: users[4].id, title: "Fraud Alert Escalated", message: "Chen Wei document fraud alert confirmed — profile rejected", type: "error", category: "risk", read: false },
-    { userId: users[5].id, title: "Referral Accepted", message: "Priya Sharma accepted the Barclays International Account referral", type: "success", category: "partner", read: true },
-    { userId: users[5].id, title: "New Referral Opportunity", message: "James Wellington eligible for AXA Home Insurance referral", type: "info", category: "partner", read: false },
-    { userId: users[6].id, title: "Application Approved", message: "Your tenancy application for 42 Kensington Gardens Square has been approved!", type: "success", category: "property", read: true },
-    { userId: users[6].id, title: "Verification Request", message: "Please upload a recent utility bill to complete your identity verification", type: "info", category: "identity", read: false },
+    { userId: users[5].id, title: "Partner Registration Approved", message: "Barclays Bank PLC partner registration has been approved and API integration is active", type: "success", category: "partner", read: true },
+    { userId: users[5].id, title: "New Partner Application", message: "Wise (TransferWise) has submitted a partner integration request", type: "info", category: "partner", read: false },
+    { userId: users[6].id, title: "Referral Accepted", message: "Priya Sharma accepted the Barclays International Account referral", type: "success", category: "partner", read: true },
+    { userId: users[6].id, title: "New Referral Opportunity", message: "James Wellington eligible for AXA Home Insurance referral", type: "info", category: "partner", read: false },
+    { userId: users[7].id, title: "Application Approved", message: "Your tenancy application for 42 Kensington Gardens Square has been approved!", type: "success", category: "property", read: true },
+    { userId: users[7].id, title: "Verification Request", message: "Please upload a recent utility bill to complete your identity verification", type: "info", category: "identity", read: false },
   ];
 
   const notifications = await Promise.all(

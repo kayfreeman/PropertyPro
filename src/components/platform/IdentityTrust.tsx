@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldCheck,
@@ -180,9 +181,13 @@ const panelVariants = {
 };
 
 export default function IdentityTrust() {
+  const { data: session } = useSession();
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('profiles');
-  const { data: identitiesData, isLoading } = useApi<IdentitiesResponse>('identities', '/api/identities');
+  const { data: identitiesData, isLoading } = useApi<IdentitiesResponse>('identities', '/api/identities', true, {
+    userId: session?.user?.id || '',
+    role: session?.user?.role || '',
+  });
 
   const identities = identitiesData?.identities ?? [];
   const selectedProfile = identities.find((p) => p.id === selectedProfileId) ?? null;
@@ -384,17 +389,51 @@ export default function IdentityTrust() {
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
-                                      className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-100 transition-colors border border-emerald-200"
+                                      className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 hover:bg-teal-100 transition-colors border border-teal-200"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setActiveTab('onboarding');
                                       }}
                                     >
-                                      Complete Onboarding
+                                      View Onboarding
+                                      <ArrowRight className="size-3" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>View the VerifyMe onboarding flow</TooltipContent>
+                                </Tooltip>
+                              )}
+                              {profile.status === 'pending' && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100 transition-colors border border-amber-200"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveTab('onboarding');
+                                      }}
+                                    >
+                                      Start Onboarding
                                       <ArrowRight className="size-3" />
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent>Continue to VerifyMe onboarding flow</TooltipContent>
+                                </Tooltip>
+                              )}
+                              {profile.status === 'in_progress' && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 hover:bg-cyan-100 transition-colors border border-cyan-200"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveTab('onboarding');
+                                      }}
+                                    >
+                                      Continue Onboarding
+                                      <ArrowRight className="size-3" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Continue the VerifyMe onboarding process</TooltipContent>
                                 </Tooltip>
                               )}
                             </div>

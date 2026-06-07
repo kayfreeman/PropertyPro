@@ -1,9 +1,40 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getDataScope } from "@/lib/rbac";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+    const role = searchParams.get("role") as string | null;
+
+    const scope = getDataScope((role as Parameters<typeof getDataScope>[0]) ?? "tenant");
+
+    // partner_user cannot see compliance checks
+    if (scope === "partner_only") {
+      return NextResponse.json({ complianceChecks: [], total: 0, summary: { byStatus: {}, byType: {}, byRiskRating: {} } });
+    }
+
+    // Tenant users with no userId: return empty data (data isolation)
+    if (scope === "own" && !userId) {
+      return NextResponse.json({ complianceChecks: [], total: 0, summary: { byStatus: {}, byType: {}, byRiskRating: {} } });
+    }
+
+    // Tenant users: find their profile first, then filter by that profileId
+    let where: Record<string, unknown> = {};
+    if (scope === "own" && userId) {
+      const profile = await db.identityProfile.findFirst({
+        where: { userId },
+        select: { id: true },
+      });
+      if (!profile) {
+        return NextResponse.json({ complianceChecks: [], total: 0, summary: { byStatus: {}, byType: {}, byRiskRating: {} } });
+      }
+      where = { profileId: profile.id };
+    }
+
     const complianceChecks = await db.complianceCheck.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       include: {
         profile: {
@@ -23,14 +54,17 @@ export async function GET() {
     const totalChecks = complianceChecks.length;
     const statusBreakdown = await db.complianceCheck.groupBy({
       by: ["status"],
+      where,
       _count: { status: true },
     });
     const typeBreakdown = await db.complianceCheck.groupBy({
       by: ["checkType"],
+      where,
       _count: { checkType: true },
     });
     const riskBreakdown = await db.complianceCheck.groupBy({
       by: ["riskRating"],
+      where,
       _count: { riskRating: true },
     });
 

@@ -18,6 +18,7 @@ import {
   Handshake,
   User,
   Crown,
+  Puzzle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,6 +37,7 @@ const DEMO_ACCOUNTS: { role: UserRole; email: string; password: string }[] = [
   { role: 'property_manager', email: 'property@propcomply.ai', password: 'Property@2024' },
   { role: 'identity_verifier', email: 'identity@propcomply.ai', password: 'Identity@2024' },
   { role: 'risk_analyst', email: 'risk@propcomply.ai', password: 'Risk@2024' },
+  { role: 'partner_integration_manager', email: 'partner-mgr@propcomply.ai', password: 'PartnerMgr@2024' },
   { role: 'partner_user', email: 'partner@barclays.ai', password: 'Partner@2024' },
   { role: 'tenant', email: 'tenant@example.com', password: 'Tenant@2024' },
 ];
@@ -46,6 +48,7 @@ const ROLE_ICONS: Record<string, React.ReactNode> = {
   property_manager: <Building2 className="size-4" />,
   identity_verifier: <ScanFace className="size-4" />,
   risk_analyst: <AlertTriangle className="size-4" />,
+  partner_integration_manager: <Puzzle className="size-4" />,
   partner_user: <Handshake className="size-4" />,
   tenant: <User className="size-4" />,
 };
@@ -286,7 +289,7 @@ export default function LoginPage({ error }: LoginPageProps) {
                       { level: 7, label: 'Full Admin', color: '#dc2626' },
                       { level: 5, label: 'Compliance', color: '#0d9488' },
                       { level: 4, label: 'Operations', color: '#8b5cf6' },
-                      { level: 3, label: 'Verifier', color: '#06b6d4' },
+                      { level: 3, label: 'Verifier / Partner Mgr', color: '#06b6d4' },
                       { level: 2, label: 'Partner', color: '#ec4899' },
                       { level: 1, label: 'Self-Service', color: '#10b981' },
                     ].map((item) => (

@@ -69,6 +69,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip';
 import { useApi } from '@/hooks/use-api';
+import { useSession } from 'next-auth/react';
 import {
   RISK_CATEGORIES,
   STATUS_COLORS,
@@ -197,7 +198,11 @@ function RiskFactorBar({ label, value, color }: { label: string; value: number; 
 
 // ── Main Component ─────────────────────────────────────────
 export default function RiskIntelligence() {
-  const { data, isLoading } = useApi<RiskResponse>('risk', '/api/risk');
+  const { data: session } = useSession();
+  const { data, isLoading } = useApi<RiskResponse>('risk', '/api/risk', true, {
+    userId: session?.user?.id || '',
+    role: session?.user?.role || '',
+  });
   const [alertStatusFilter, setAlertStatusFilter] = useState<string>('all');
   const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
 

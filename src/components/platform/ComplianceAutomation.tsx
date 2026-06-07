@@ -49,6 +49,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useApi } from '@/hooks/use-api';
+import { useSession } from 'next-auth/react';
 import {
   COMPLIANCE_TYPES,
   STATUS_COLORS,
@@ -192,7 +193,11 @@ function ProgressRing({ value, size = 40, strokeWidth = 4, color = '#10b981' }: 
 
 // ── Compliance Checks Tab Content ──────────────────────────
 function ComplianceChecksTab() {
-  const { data, isLoading } = useApi<ComplianceResponse>('compliance', '/api/compliance');
+  const { data: session } = useSession();
+  const { data, isLoading } = useApi<ComplianceResponse>('compliance', '/api/compliance', true, {
+    userId: session?.user?.id || '',
+    role: session?.user?.role || '',
+  });
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
   const complianceChecks = data?.complianceChecks ?? [];

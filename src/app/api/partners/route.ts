@@ -1,9 +1,40 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getDataScope } from "@/lib/rbac";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+    const role = searchParams.get("role") as string | null;
+
+    const scope = getDataScope((role as Parameters<typeof getDataScope>[0]) ?? "tenant");
+
+    // Tenants can't see partners
+    if (scope === "own") {
+      return NextResponse.json({ partners: [], total: 0, summary: { byPartnerType: [], referralsByStatus: {}, referralsByType: {} } });
+    }
+
+    // Partner users with no userId: return empty data (data isolation)
+    if (scope === "partner_only" && !userId) {
+      return NextResponse.json({ partners: [], total: 0, summary: { byPartnerType: [], referralsByStatus: {}, referralsByType: {} } });
+    }
+
+    // Partner users: only see the partner they belong to
+    let partnerWhere: Record<string, unknown> = {};
+    if (scope === "partner_only" && userId) {
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { partnerId: true },
+      });
+      if (!user?.partnerId) {
+        return NextResponse.json({ partners: [], total: 0, summary: { byPartnerType: [], referralsByStatus: {}, referralsByType: {} } });
+      }
+      partnerWhere = { id: user.partnerId };
+    }
+
     const partners = await db.partner.findMany({
+      where: partnerWhere,
       orderBy: { createdAt: "desc" },
       include: {
         referrals: {
@@ -48,17 +79,28 @@ export async function GET() {
     // Partner summary
     const partnerTypeBreakdown = await db.partner.groupBy({
       by: ["partnerType"],
+      where: partnerWhere,
       _count: { partnerType: true },
       _avg: { trustRating: true },
     });
 
+    // For partner_user, scope referral summaries to their partner
+    const referralWhere = scope === "partner_only" && userId
+      ? (() => {
+          const user = partners.length > 0 ? { partnerId: partners[0].id } : {};
+          return user;
+        })()
+      : undefined;
+
     const referralStatusBreakdown = await db.partnerReferral.groupBy({
       by: ["status"],
+      where: referralWhere,
       _count: { status: true },
     });
 
     const referralTypeBreakdown = await db.partnerReferral.groupBy({
       by: ["referralType"],
+      where: referralWhere,
       _count: { referralType: true },
     });
 

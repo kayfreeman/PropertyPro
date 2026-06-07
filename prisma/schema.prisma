@@ -27,9 +27,11 @@ model IdentityProfile {
   status          String   @default("pending") // pending, verified, suspended, rejected
   consentGiven    Boolean  @default(false)
   gdprCompliant   Boolean  @default(false)
+  userId          String?  // Links profile to User account for tenant data isolation
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  user            User?    @relation(fields: [userId], references: [id])
   credentials     IdentityCredential[]
   evidence        IdentityEvidence[]
   verifications   VerificationRecord[]
@@ -203,6 +205,7 @@ model Partner {
   updatedAt       DateTime @updatedAt
 
   referrals       PartnerReferral[]
+  users           User[]
 }
 
 model PartnerReferral {
@@ -272,6 +275,7 @@ model User {
   lastLoginIp     String?
   loginAttempts   Int      @default(0)
   lockedUntil     DateTime?
+  partnerId       String?  // Links partner_user to their Partner for data isolation
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -280,6 +284,8 @@ model User {
   auditLogs       AuditLog[]
   notifications   Notification[]
   consentRecords  ConsentRecord[]
+  profiles        IdentityProfile[]
+  partner         Partner? @relation(fields: [partnerId], references: [id])
 }
 
 model UserSession {

@@ -43,6 +43,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useApi } from '@/hooks/use-api';
+import { useSession } from 'next-auth/react';
 import {
   PARTNER_TYPES,
   STATUS_COLORS,
@@ -160,9 +161,15 @@ function YesNoIcon({ value }: { value: boolean }) {
 }
 
 export default function PropertyIntelligence() {
+  const { data: session } = useSession();
   const { data, isLoading, error } = useApi<PropertiesResponse>(
     'properties',
-    '/api/properties'
+    '/api/properties',
+    true,
+    {
+      userId: session?.user?.id || '',
+      role: session?.user?.role || '',
+    }
   );
 
   const properties = data?.properties ?? [];

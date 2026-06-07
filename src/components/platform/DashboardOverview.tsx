@@ -42,6 +42,7 @@ import {
 } from 'recharts';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from '@/components/ui/chart';
 import { useApi } from '@/hooks/use-api';
+import { useSession } from 'next-auth/react';
 import { formatDateTime, getStatusStyle } from '@/lib/platform-data';
 
 // Dashboard data types
@@ -183,8 +184,15 @@ function TrustScoreCircle({ score }: { score: number }) {
 }
 
 export default function DashboardOverview() {
-  const { data: dashboard, isLoading: dashboardLoading } = useApi<DashboardData>('dashboard', '/api/dashboard');
-  const { data: compliance } = useApi<ComplianceData>('compliance', '/api/compliance');
+  const { data: session } = useSession();
+  const { data: dashboard, isLoading: dashboardLoading } = useApi<DashboardData>('dashboard', '/api/dashboard', true, {
+    userId: session?.user?.id || '',
+    role: session?.user?.role || '',
+  });
+  const { data: compliance } = useApi<ComplianceData>('compliance', '/api/compliance', true, {
+    userId: session?.user?.id || '',
+    role: session?.user?.role || '',
+  });
 
   const summary = dashboard?.summary;
   const recentActivity = dashboard?.recentActivity ?? [];

@@ -1,9 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getDataScope } from "@/lib/rbac";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+    const role = searchParams.get("role") as string | null;
+
+    const scope = getDataScope((role as Parameters<typeof getDataScope>[0]) ?? "tenant");
+
+    // partner_user cannot see identity profiles
+    if (scope === "partner_only") {
+      return NextResponse.json({ identities: [], total: 0 });
+    }
+
+    // Tenant users can only see their own profile(s)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let where: any = {};
+    if (scope === "own") {
+      if (!userId) {
+        // No userId provided for tenant role — return empty
+        return NextResponse.json({ identities: [], total: 0 });
+      }
+      where = { userId };
+    }
+
     const identities = await db.identityProfile.findMany({
+      where,
       orderBy: { createdAt: "desc" },
       include: {
         credentials: {

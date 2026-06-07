@@ -28,6 +28,14 @@ import {
   Activity,
   ToggleLeft,
   ToggleRight,
+  CheckCircle2,
+  XCircle,
+  Crown,
+  ScanFace,
+  Handshake,
+  Puzzle,
+  TrendingUp,
+  AlertCircle,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,7 +48,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ROLE_DEFINITIONS, type UserRole, ROLE_LIST } from '@/lib/rbac';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { ROLE_DEFINITIONS, ROLE_PERMISSIONS_MATRIX, ROLE_LIST, getDataScope, type UserRole } from '@/lib/rbac';
 import { toast } from 'sonner';
 
 // ============================================
@@ -861,6 +878,337 @@ function PlatformConfig() {
 }
 
 // ============================================
+// Roles & Access Tab
+// ============================================
+function RolesAccessSettings() {
+  const { data: session } = useSession();
+  const currentRole = (session?.user?.role || 'tenant') as UserRole;
+  const currentRoleDef = ROLE_DEFINITIONS[currentRole];
+  const currentMatrix = ROLE_PERMISSIONS_MATRIX[currentRole];
+  const dataScope = getDataScope(currentRole);
+
+  // Feature areas for the matrix
+  const featureAreas = [
+    { key: 'identity' as const, label: 'Identity', icon: <ScanFace className="size-4" />, color: '#06b6d4' },
+    { key: 'compliance' as const, label: 'Compliance', icon: <FileText className="size-4" />, color: '#10b981' },
+    { key: 'risk' as const, label: 'Risk', icon: <AlertTriangle className="size-4" />, color: '#f59e0b' },
+    { key: 'property' as const, label: 'Property', icon: <Building2 className="size-4" />, color: '#8b5cf6' },
+    { key: 'partners' as const, label: 'Partners', icon: <Handshake className="size-4" />, color: '#ec4899' },
+    { key: 'settings' as const, label: 'Settings', icon: <Settings2 className="size-4" />, color: '#64748b' },
+    { key: 'users' as const, label: 'Users', icon: <Users className="size-4" />, color: '#0d9488' },
+    { key: 'audit' as const, label: 'Audit', icon: <Activity className="size-4" />, color: '#f97316' },
+  ];
+
+  // Role icon mapping
+  const roleIcons: Record<string, React.ReactNode> = {
+    platform_admin: <Crown className="size-4" />,
+    compliance_officer: <Shield className="size-4" />,
+    property_manager: <Building2 className="size-4" />,
+    identity_verifier: <ScanFace className="size-4" />,
+    risk_analyst: <TrendingUp className="size-4" />,
+    partner_integration_manager: <Puzzle className="size-4" />,
+    partner_user: <Handshake className="size-4" />,
+    tenant: <User className="size-4" />,
+  };
+
+  // Check if a role has any capability in a feature area
+  const hasCapability = (role: UserRole, feature: keyof typeof ROLE_PERMISSIONS_MATRIX[UserRole]) => {
+    const caps = ROLE_PERMISSIONS_MATRIX[role][feature];
+    return Object.values(caps).some(v => v === true);
+  };
+
+  // Get capability count for a role in a feature
+  const getCapabilityCount = (role: UserRole, feature: keyof typeof ROLE_PERMISSIONS_MATRIX[UserRole]) => {
+    const caps = ROLE_PERMISSIONS_MATRIX[role][feature];
+    return Object.values(caps).filter(v => v === true).length;
+  };
+
+  // Data scope label
+  const dataScopeLabels: Record<string, { label: string; color: string; bgColor: string }> = {
+    all: { label: 'All Data', color: '#10b981', bgColor: '#ecfdf5' },
+    partner_only: { label: 'Partner Data Only', color: '#ec4899', bgColor: '#fdf2f8' },
+    own: { label: 'Own Data Only', color: '#f59e0b', bgColor: '#fffbeb' },
+  };
+
+  const scopeInfo = dataScopeLabels[dataScope] || dataScopeLabels.own;
+
+  // Current user's specific capabilities
+  const userCapabilities: { feature: string; capabilities: string[] }[] = featureAreas
+    .map(area => {
+      const caps = currentMatrix[area.key];
+      const capNames: string[] = [];
+      if (caps.view_all) capNames.push('View All');
+      if (caps.view_own) capNames.push('View Own');
+      if (caps.verify) capNames.push('Verify');
+      if (caps.manage) capNames.push('Manage');
+      if (caps.review) capNames.push('Review');
+      if (caps.analyze) capNames.push('Analyze');
+      if (caps.register) capNames.push('Register');
+      if (caps.apply) capNames.push('Apply');
+      if (caps.view) capNames.push('View');
+      if (caps.admin) capNames.push('Admin');
+      if (caps.export) capNames.push('Export');
+      return { feature: area.label, capabilities: capNames };
+    })
+    .filter(item => item.capabilities.length > 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Role Cards Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Shield className="size-4 text-teal-600" />
+            Platform Roles
+          </CardTitle>
+          <CardDescription>All available roles and their authority levels in the Trust Infrastructure Platform</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {ROLE_LIST.map((role) => {
+              const def = ROLE_DEFINITIONS[role];
+              const isCurrentRole = role === currentRole;
+              return (
+                <div
+                  key={role}
+                  className={`rounded-lg border p-3 transition-all ${
+                    isCurrentRole ? 'ring-2 ring-teal-500 shadow-md' : 'hover:shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="size-7 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: def.bgColor, color: def.color }}
+                    >
+                      {roleIcons[role]}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold truncate" style={{ color: isCurrentRole ? def.color : undefined }}>{def.name}</p>
+                      <p className="text-[10px] text-muted-foreground">Level {def.level}</p>
+                    </div>
+                    {isCurrentRole && (
+                      <Badge className="text-[8px] px-1 py-0 bg-teal-100 text-teal-700 border-teal-200">You</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2">{def.description}</p>
+                  <div className="flex items-center justify-between">
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] px-1.5 py-0"
+                      style={{ borderColor: def.color + '40', color: def.color, backgroundColor: def.bgColor }}
+                    >
+                      {def.permissions.length} perms
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] px-1.5 py-0"
+                      style={{ borderColor: def.color + '40', color: def.color }}
+                    >
+                      {def.sections.length} sections
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Feature Access Matrix */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Activity className="size-4 text-teal-600" />
+            Feature Access Matrix
+          </CardTitle>
+          <CardDescription>Capability mapping across roles and platform feature areas</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="w-full">
+            <div className="min-w-[700px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="sticky left-0 bg-background z-10 min-w-[120px]">Feature</TableHead>
+                    {ROLE_LIST.map((role) => {
+                      const def = ROLE_DEFINITIONS[role];
+                      const isCurrent = role === currentRole;
+                      return (
+                        <TableHead
+                          key={role}
+                          className={`text-center min-w-[80px] ${isCurrent ? 'bg-teal-50/50' : ''}`}
+                        >
+                          <div className="flex flex-col items-center gap-1">
+                            <div
+                              className="size-5 rounded flex items-center justify-center"
+                              style={{ backgroundColor: def.bgColor, color: def.color }}
+                            >
+                              {roleIcons[role]}
+                            </div>
+                            <span className="text-[9px] font-medium truncate max-w-[70px]" style={{ color: isCurrent ? def.color : undefined }}>
+                              {def.name.split(' ')[0]}
+                            </span>
+                          </div>
+                        </TableHead>
+                      );
+                    })}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {featureAreas.map((area) => (
+                    <TableRow key={area.key}>
+                      <TableCell className="sticky left-0 bg-background z-10 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span style={{ color: area.color }}>{area.icon}</span>
+                          <span className="text-xs">{area.label}</span>
+                        </div>
+                      </TableCell>
+                      {ROLE_LIST.map((role) => {
+                        const isCurrent = role === currentRole;
+                        const capCount = getCapabilityCount(role, area.key);
+                        const hasAccess = hasCapability(role, area.key);
+                        return (
+                          <TableCell
+                            key={role}
+                            className={`text-center ${isCurrent ? 'bg-teal-50/30' : ''}`}
+                          >
+                            {hasAccess ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center justify-center">
+                                    <CheckCircle2 className="size-4 text-emerald-500" />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs font-medium">{capCount} capabilit{capCount !== 1 ? 'ies' : 'y'}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <div className="flex items-center justify-center">
+                                <XCircle className="size-4 text-slate-200" />
+                              </div>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
+      {/* Your Access Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <User className="size-4 text-teal-600" />
+            Your Access
+          </CardTitle>
+          <CardDescription>Detailed view of your current permissions and data scope</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Current Role & Data Scope */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-lg border p-4" style={{ backgroundColor: currentRoleDef.bgColor + '40', borderColor: currentRoleDef.color + '30' }}>
+              <div className="flex items-center gap-3 mb-2">
+                <div
+                  className="size-9 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: currentRoleDef.bgColor, color: currentRoleDef.color }}
+                >
+                  {roleIcons[currentRole]}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm" style={{ color: currentRoleDef.color }}>{currentRoleDef.name}</p>
+                  <p className="text-[11px] text-muted-foreground">Authority Level {currentRoleDef.level}</p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{currentRoleDef.description}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div
+                  className="size-9 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: scopeInfo.bgColor, color: scopeInfo.color }}
+                >
+                  <Database className="size-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">Data Scope</p>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] mt-0.5"
+                    style={{ borderColor: scopeInfo.color + '40', color: scopeInfo.color, backgroundColor: scopeInfo.bgColor }}
+                  >
+                    {scopeInfo.label}
+                  </Badge>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {dataScope === 'all' && 'You can view and manage all data across the platform.'}
+                {dataScope === 'partner_only' && 'You can only view data related to your partner organisation.'}
+                {dataScope === 'own' && 'You can only view and manage your own personal data.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Accessible Sections */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Accessible Sections</p>
+            <div className="flex flex-wrap gap-1.5">
+              {currentRoleDef.sections.map((section) => (
+                <Badge key={section} variant="secondary" className="text-[10px] capitalize gap-1">
+                  {section.replace(/-/g, ' ')}
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          {/* Capabilities by Feature */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Your Capabilities</p>
+            {userCapabilities.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {userCapabilities.map((item) => (
+                  <div key={item.feature} className="flex items-start gap-2 p-2.5 rounded-lg border">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <CheckCircle2 className="size-3.5 text-emerald-500" />
+                      <span className="text-xs font-medium">{item.feature}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 ml-auto">
+                      {item.capabilities.map((cap) => (
+                        <Badge key={cap} variant="outline" className="text-[9px] px-1.5 py-0">
+                          {cap}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-sm text-muted-foreground">
+                <AlertCircle className="size-5 mx-auto mb-1 text-muted-foreground/50" />
+                No specific capabilities assigned
+              </div>
+            )}
+          </div>
+
+          {/* Total Permissions */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40">
+            <Shield className="size-4 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              Total permissions: <strong>{currentRoleDef.permissions.length}</strong> across {currentRoleDef.sections.length} sections
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ============================================
 // Main Settings Component
 // ============================================
 export default function Settings() {
@@ -891,6 +1239,10 @@ export default function Settings() {
             <Shield className="size-3.5" />
             Privacy
           </TabsTrigger>
+          <TabsTrigger value="roles" className="text-xs gap-1.5 data-[state=active]:bg-white">
+            <Users className="size-3.5" />
+            Roles & Access
+          </TabsTrigger>
           {isAdmin && (
             <TabsTrigger value="platform" className="text-xs gap-1.5 data-[state=active]:bg-white">
               <Settings2 className="size-3.5" />
@@ -910,6 +1262,9 @@ export default function Settings() {
         </TabsContent>
         <TabsContent value="privacy">
           <PrivacySettings />
+        </TabsContent>
+        <TabsContent value="roles">
+          <RolesAccessSettings />
         </TabsContent>
         {isAdmin && (
           <TabsContent value="platform">

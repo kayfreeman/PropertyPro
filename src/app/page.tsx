@@ -84,6 +84,16 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState<SectionId>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+    try {
+      await signOut({ callbackUrl: '/' });
+    } catch {
+      setIsSigningOut(false);
+    }
+  };
 
   // Get user role and filtered sections
   const userRole = (session?.user?.role || 'tenant') as UserRole;
@@ -221,9 +231,17 @@ export default function Home() {
                   Security
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/' })} className="cursor-pointer text-red-600 focus:text-red-600">
-                  <LogOut className="mr-2 size-4" />
-                  Sign Out
+                <DropdownMenuItem
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="cursor-pointer text-red-600 focus:text-red-600"
+                >
+                  {isSigningOut ? (
+                    <div className="mr-2 size-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+                  ) : (
+                    <LogOut className="mr-2 size-4" />
+                  )}
+                  {isSigningOut ? 'Signing out...' : 'Sign Out'}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -345,10 +363,15 @@ export default function Home() {
                     variant="outline"
                     size="sm"
                     className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => signOut({ callbackUrl: '/' })}
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
                   >
-                    <LogOut className="size-4 mr-2" />
-                    Sign Out
+                    {isSigningOut ? (
+                      <div className="size-4 mr-2 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+                    ) : (
+                      <LogOut className="size-4 mr-2" />
+                    )}
+                    {isSigningOut ? 'Signing out...' : 'Sign Out'}
                   </Button>
                   <p className="text-[10px] text-muted-foreground mt-2">PropComply AI + VerifyMe Global v1.0.0</p>
                 </div>

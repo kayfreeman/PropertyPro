@@ -7,6 +7,7 @@ export type UserRole =
   | 'property_manager'
   | 'identity_verifier'
   | 'risk_analyst'
+  | 'partner_integration_manager'
   | 'partner_user'
   | 'tenant';
 
@@ -24,6 +25,7 @@ export type Permission =
   | 'dashboard:view'
   | 'dashboard:view_limited'
   | 'identity:view'
+  | 'identity:view_own'
   | 'identity:verify'
   | 'identity:manage'
   | 'compliance:view'
@@ -37,6 +39,7 @@ export type Permission =
   | 'property:apply'
   | 'partners:view'
   | 'partners:manage'
+  | 'partners:register'
   | 'ai_assistant:use'
   | 'settings:view'
   | 'settings:manage'
@@ -71,11 +74,11 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     icon: 'Crown',
     department: 'Engineering',
     permissions: [
-      'dashboard:view', 'identity:view', 'identity:verify', 'identity:manage',
+      'dashboard:view', 'identity:view', 'identity:view_own', 'identity:verify', 'identity:manage',
       'compliance:view', 'compliance:review', 'compliance:manage',
       'risk:view', 'risk:analyze', 'risk:manage',
-      'property:view', 'property:manage',
-      'partners:view', 'partners:manage',
+      'property:view', 'property:manage', 'property:apply',
+      'partners:view', 'partners:manage', 'partners:register',
       'ai_assistant:use', 'settings:view', 'settings:manage', 'settings:admin',
       'users:view', 'users:manage', 'audit:view', 'audit:export', 'consent:manage',
     ],
@@ -91,7 +94,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     icon: 'ShieldCheck',
     department: 'Compliance',
     permissions: [
-      'dashboard:view', 'identity:view', 'identity:verify', 'identity:manage',
+      'dashboard:view', 'identity:view', 'identity:view_own', 'identity:verify', 'identity:manage',
       'compliance:view', 'compliance:review', 'compliance:manage',
       'risk:view', 'risk:analyze',
       'ai_assistant:use', 'settings:view', 'settings:manage',
@@ -109,9 +112,9 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     icon: 'Building2',
     department: 'Property Operations',
     permissions: [
-      'dashboard:view', 'identity:view', 'identity:verify',
+      'dashboard:view', 'identity:view', 'identity:view_own', 'identity:verify',
       'compliance:view',
-      'property:view', 'property:manage',
+      'property:view', 'property:manage', 'property:apply',
       'ai_assistant:use', 'settings:view', 'settings:manage',
     ],
     sections: ['dashboard', 'identity', 'compliance', 'property', 'ai-assistant', 'settings'],
@@ -126,7 +129,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     icon: 'ScanFace',
     department: 'Identity Operations',
     permissions: [
-      'dashboard:view', 'identity:view', 'identity:verify', 'identity:manage',
+      'dashboard:view', 'identity:view', 'identity:view_own', 'identity:verify', 'identity:manage',
       'compliance:view',
       'ai_assistant:use', 'settings:view', 'settings:manage',
     ],
@@ -142,7 +145,7 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     icon: 'AlertTriangle',
     department: 'Risk & Analytics',
     permissions: [
-      'dashboard:view', 'identity:view',
+      'dashboard:view', 'identity:view', 'identity:view_own',
       'compliance:view', 'compliance:review',
       'risk:view', 'risk:analyze', 'risk:manage',
       'ai_assistant:use', 'settings:view', 'settings:manage',
@@ -151,16 +154,33 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
     sections: ['dashboard', 'identity', 'compliance', 'risk', 'ai-assistant', 'settings'],
     level: 4,
   },
+  partner_integration_manager: {
+    id: 'partner_integration_manager',
+    name: 'Partner Integration Manager',
+    description: 'Manages partner integrations, registers new partners, and oversees partner onboarding with identity and compliance visibility',
+    color: '#e11d48',
+    bgColor: '#fff1f2',
+    icon: 'Puzzle',
+    department: 'Partner Operations',
+    permissions: [
+      'dashboard:view', 'identity:view', 'identity:view_own',
+      'compliance:view',
+      'partners:view', 'partners:manage', 'partners:register',
+      'ai_assistant:use', 'settings:view', 'settings:manage',
+    ],
+    sections: ['dashboard', 'identity', 'compliance', 'partners', 'ai-assistant', 'settings'],
+    level: 3,
+  },
   partner_user: {
     id: 'partner_user',
     name: 'Partner User',
-    description: 'External partner with limited portal access for referral management and integration workflows',
+    description: 'External partner with limited portal access for viewing partner integration data and referral workflows',
     color: '#ec4899',
     bgColor: '#fdf2f8',
     icon: 'Handshake',
     department: 'Partner Relations',
     permissions: [
-      'dashboard:view_limited', 'partners:view', 'partners:manage',
+      'dashboard:view_limited', 'partners:view',
       'ai_assistant:use', 'settings:view',
     ],
     sections: ['dashboard', 'partners', 'ai-assistant', 'settings'],
@@ -169,13 +189,13 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   tenant: {
     id: 'tenant',
     name: 'Tenant / Applicant',
-    description: 'Self-service portal access for document upload, consent management, and application tracking',
+    description: 'Self-service portal access for document upload, consent management, application tracking, and onboarding',
     color: '#10b981',
     bgColor: '#ecfdf5',
     icon: 'User',
     department: 'Self-Service',
     permissions: [
-      'dashboard:view_limited', 'identity:view',
+      'dashboard:view_limited', 'identity:view_own',
       'property:view', 'property:apply',
       'ai_assistant:use', 'settings:view', 'consent:manage',
     ],
@@ -208,6 +228,136 @@ export function getFilteredSections(role: UserRole, allSections: { id: string; l
   return allSections.filter(s => accessible.includes(s.id as SectionId));
 }
 
+// Data scope helper — determines how much data a role can see
+export type DataScope = 'all' | 'partner_only' | 'own';
+
+export function getDataScope(role: UserRole): DataScope {
+  switch (role) {
+    case 'platform_admin':
+    case 'compliance_officer':
+    case 'property_manager':
+    case 'identity_verifier':
+    case 'risk_analyst':
+    case 'partner_integration_manager':
+      return 'all';
+    case 'partner_user':
+      return 'partner_only';
+    case 'tenant':
+      return 'own';
+    default:
+      return 'own';
+  }
+}
+
+// Detailed permissions matrix by feature area
+export interface FeatureCapabilities {
+  view_all?: boolean;
+  view_own?: boolean;
+  verify?: boolean;
+  manage?: boolean;
+  review?: boolean;
+  analyze?: boolean;
+  register?: boolean;
+  apply?: boolean;
+  view?: boolean;
+  admin?: boolean;
+  export?: boolean;
+}
+
+export interface RolePermissionsMatrix {
+  identity: FeatureCapabilities;
+  compliance: FeatureCapabilities;
+  risk: FeatureCapabilities;
+  property: FeatureCapabilities;
+  partners: FeatureCapabilities;
+  settings: FeatureCapabilities;
+  users: FeatureCapabilities;
+  audit: FeatureCapabilities;
+}
+
+export const ROLE_PERMISSIONS_MATRIX: Record<UserRole, RolePermissionsMatrix> = {
+  platform_admin: {
+    identity: { view_all: true, view_own: true, verify: true, manage: true },
+    compliance: { view_all: true, review: true, manage: true },
+    risk: { view_all: true, analyze: true, manage: true },
+    property: { view_all: true, manage: true, apply: true },
+    partners: { view_all: true, manage: true, register: true },
+    settings: { view: true, manage: true, admin: true },
+    users: { view: true, manage: true },
+    audit: { view: true, export: true },
+  },
+  compliance_officer: {
+    identity: { view_all: true, view_own: true, verify: true, manage: true },
+    compliance: { view_all: true, review: true, manage: true },
+    risk: { view_all: true, analyze: true },
+    property: {},
+    partners: {},
+    settings: { view: true, manage: true },
+    users: {},
+    audit: { view: true, export: true },
+  },
+  property_manager: {
+    identity: { view_all: true, view_own: true, verify: true },
+    compliance: { view_all: true },
+    risk: {},
+    property: { view_all: true, manage: true, apply: true },
+    partners: {},
+    settings: { view: true, manage: true },
+    users: {},
+    audit: {},
+  },
+  identity_verifier: {
+    identity: { view_all: true, view_own: true, verify: true, manage: true },
+    compliance: { view_all: true },
+    risk: {},
+    property: {},
+    partners: {},
+    settings: { view: true, manage: true },
+    users: {},
+    audit: {},
+  },
+  risk_analyst: {
+    identity: { view_all: true, view_own: true },
+    compliance: { view_all: true, review: true },
+    risk: { view_all: true, analyze: true, manage: true },
+    property: {},
+    partners: {},
+    settings: { view: true, manage: true },
+    users: {},
+    audit: { view: true },
+  },
+  partner_integration_manager: {
+    identity: { view_all: true, view_own: true },
+    compliance: { view_all: true },
+    risk: {},
+    property: {},
+    partners: { view_all: true, manage: true, register: true },
+    settings: { view: true, manage: true },
+    users: {},
+    audit: {},
+  },
+  partner_user: {
+    identity: {},
+    compliance: {},
+    risk: {},
+    property: {},
+    partners: { view_all: true },
+    settings: { view: true },
+    users: {},
+    audit: {},
+  },
+  tenant: {
+    identity: { view_own: true },
+    compliance: {},
+    risk: {},
+    property: { view_all: true, apply: true },
+    partners: {},
+    settings: { view: true },
+    users: {},
+    audit: {},
+  },
+};
+
 // Role display helpers
 export const ROLE_LIST: UserRole[] = [
   'platform_admin',
@@ -215,6 +365,7 @@ export const ROLE_LIST: UserRole[] = [
   'property_manager',
   'identity_verifier',
   'risk_analyst',
+  'partner_integration_manager',
   'partner_user',
   'tenant',
 ];

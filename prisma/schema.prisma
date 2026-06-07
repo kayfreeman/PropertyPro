@@ -224,6 +224,7 @@ model PartnerReferral {
 model AuditLog {
   id              String   @id @default(cuid())
   profileId       String?
+  userId          String?
   action          String
   performedBy     String?
   resource        String
@@ -233,11 +234,13 @@ model AuditLog {
   timestamp       DateTime @default(now())
 
   profile         IdentityProfile? @relation(fields: [profileId], references: [id])
+  user            User? @relation(fields: [userId], references: [id])
 }
 
 model ConsentRecord {
   id              String   @id @default(cuid())
   profileId       String?
+  userId          String?
   consentType     String   // data_processing, marketing, third_party_sharing, automated_decisions
   granted         Boolean
   purpose         String?
@@ -245,6 +248,66 @@ model ConsentRecord {
   withdrawnAt     DateTime?
   expiresAt       DateTime?
   createdAt       DateTime @default(now())
+
+  user            User? @relation(fields: [userId], references: [id])
+}
+
+// ============================================
+// USER & AUTH DOMAIN
+// ============================================
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  passwordHash    String
+  role            String   @default("viewer") // platform_admin, compliance_officer, property_manager, identity_verifier, risk_analyst, partner_user, tenant
+  avatar          String?  // initials or URL
+  department      String?
+  jobTitle        String?
+  phone           String?
+  mfaEnabled      Boolean  @default(false)
+  mfaSecret       String?
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
+  loginAttempts   Int      @default(0)
+  lockedUntil     DateTime?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessions        UserSession[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+  consentRecords  ConsentRecord[]
+}
+
+model UserSession {
+  id              String   @id @default(cuid())
+  userId          String
+  token           String   @unique
+  device          String?
+  browser         String?
+  ipAddress       String?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  title           String
+  message         String
+  type            String   @default("info") // info, warning, error, success, compliance, risk
+  category        String   @default("system") // system, compliance, risk, property, identity, partner
+  read            Boolean  @default(false)
+  actionUrl       String?
+  createdAt       DateTime @default(now())
+  readAt          DateTime?
+
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ============================================

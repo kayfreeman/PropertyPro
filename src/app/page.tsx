@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSession, signOut } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -17,11 +18,24 @@ import {
   Bell,
   Search,
   Shield,
+  Settings2,
+  LogOut,
+  User,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import DashboardOverview from '@/components/platform/DashboardOverview';
 import IdentityTrust from '@/components/platform/IdentityTrust';
 import ComplianceAutomation from '@/components/platform/ComplianceAutomation';
@@ -29,8 +43,11 @@ import RiskIntelligence from '@/components/platform/RiskIntelligence';
 import PropertyIntelligence from '@/components/platform/PropertyIntelligence';
 import PartnerEcosystem from '@/components/platform/PartnerEcosystem';
 import AIAssistant from '@/components/platform/AIAssistant';
+import Settings from '@/components/platform/Settings';
+import LoginPage from '@/components/platform/LoginPage';
+import { canAccessSection, getRoleDefinition, type UserRole } from '@/lib/rbac';
 
-type SectionId = 'dashboard' | 'identity' | 'compliance' | 'risk' | 'property' | 'partners' | 'ai-assistant';
+type SectionId = 'dashboard' | 'identity' | 'compliance' | 'risk' | 'property' | 'partners' | 'ai-assistant' | 'settings';
 
 interface NavSection {
   id: SectionId;
@@ -40,7 +57,7 @@ interface NavSection {
   color: string;
 }
 
-const NAV_SECTIONS: NavSection[] = [
+const ALL_NAV_SECTIONS: NavSection[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="size-5" />, description: 'Platform overview & analytics', color: '#10b981' },
   { id: 'identity', label: 'Identity & Trust', icon: <ShieldCheck className="size-5" />, description: 'Verification & trust ladder', color: '#0d9488' },
   { id: 'compliance', label: 'Compliance', icon: <FileCheck className="size-5" />, description: 'AML/KYC/CDD automation', color: '#06b6d4' },
@@ -48,6 +65,7 @@ const NAV_SECTIONS: NavSection[] = [
   { id: 'property', label: 'Property', icon: <Building2 className="size-5" />, description: 'Property compliance & intelligence', color: '#8b5cf6' },
   { id: 'partners', label: 'Partners', icon: <Handshake className="size-5" />, description: 'Ecosystem integrations', color: '#ec4899' },
   { id: 'ai-assistant', label: 'AI Assistant', icon: <Bot className="size-5" />, description: 'Compliance AI chatbot', color: '#6366f1' },
+  { id: 'settings', label: 'Settings', icon: <Settings2 className="size-5" />, description: 'Profile, security & platform config', color: '#64748b' },
 ];
 
 const SECTION_META: Record<string, { title: string; subtitle: string }> = {
@@ -58,17 +76,50 @@ const SECTION_META: Record<string, { title: string; subtitle: string }> = {
   property: { title: 'Property Intelligence', subtitle: 'Property compliance, Right to Rent, guarantor replacement & market intelligence' },
   partners: { title: 'Partner Ecosystem', subtitle: 'Partner integrations, referral pipeline & banking referral services' },
   'ai-assistant': { title: 'AI Compliance Assistant', subtitle: 'Regulatory guidance chatbot powered by compliance knowledge base' },
+  settings: { title: 'Settings', subtitle: 'Manage your profile, security, notifications, privacy, and platform configuration' },
 };
 
 export default function Home() {
+  const { data: session, status } = useSession();
   const [activeSection, setActiveSection] = useState<SectionId>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Get user role and filtered sections
+  const userRole = (session?.user?.role || 'tenant') as UserRole;
+  const roleDef = getRoleDefinition(userRole);
+
+  // Filter nav sections based on role
+  const navSections = ALL_NAV_SECTIONS.filter(s => canAccessSection(userRole, s.id));
+
+  // Derive valid active section — fallback to first accessible if current is not accessible
+  const validSection = canAccessSection(userRole, activeSection) ? activeSection : (navSections[0]?.id || 'dashboard') as SectionId;
 
   const handleSectionChange = (section: SectionId) => {
     setActiveSection(section);
     setMobileMenuOpen(false);
   };
+
+  // Show login page if not authenticated
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-teal-50/30">
+        <div className="flex flex-col items-center gap-4">
+          <div className="size-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg animate-pulse">
+            <Shield className="size-7 text-white" />
+          </div>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="size-4 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+            <span className="text-sm">Loading platform...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -115,17 +166,67 @@ export default function Home() {
 
           {/* Right section */}
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700 bg-emerald-50 hidden sm:flex">
-              <span className="size-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />
-              Enterprise
+            {/* Role Badge */}
+            <Badge
+              variant="outline"
+              className="text-[10px] hidden sm:flex"
+              style={{ borderColor: roleDef.color + '40', color: roleDef.color, backgroundColor: roleDef.bgColor }}
+            >
+              {roleDef.name}
             </Badge>
-            <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
+
+            {/* Notifications */}
+            <Button variant="ghost" size="icon" className="relative" aria-label="Notifications" onClick={() => handleSectionChange('settings')}>
               <Bell className="size-5" />
               <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">3</span>
             </Button>
-            <div className="size-8 rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white text-xs font-bold cursor-pointer">
-              JD
-            </div>
+
+            {/* User Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 rounded-lg p-1 hover:bg-muted/60 transition-colors">
+                  <Avatar className="size-8 border-2" style={{ borderColor: roleDef.color + '40' }}>
+                    <AvatarFallback className="text-xs font-bold" style={{ backgroundColor: roleDef.bgColor, color: roleDef.color }}>
+                      {session.user.avatar || '??'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="hidden md:block text-left">
+                    <p className="text-xs font-semibold leading-tight">{session.user.name}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">{session.user.jobTitle || roleDef.name}</p>
+                  </div>
+                  <ChevronDown className="size-3 text-muted-foreground hidden md:block" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium">{session.user.name}</p>
+                    <p className="text-xs text-muted-foreground">{session.user.email}</p>
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] w-fit"
+                      style={{ borderColor: roleDef.color + '40', color: roleDef.color, backgroundColor: roleDef.bgColor }}
+                    >
+                      {roleDef.name} &middot; Level {roleDef.level}
+                    </Badge>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleSectionChange('settings')} className="cursor-pointer">
+                  <User className="mr-2 size-4" />
+                  Profile & Settings
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleSectionChange('settings')} className="cursor-pointer">
+                  <Shield className="mr-2 size-4" />
+                  Security
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => signOut({ callbackUrl: '/' })} className="cursor-pointer text-red-600 focus:text-red-600">
+                  <LogOut className="mr-2 size-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -135,8 +236,8 @@ export default function Home() {
         <aside className="hidden lg:flex flex-col border-r bg-white/50 transition-all duration-300" style={{ width: sidebarCollapsed ? '64px' : '240px' }}>
           <ScrollArea className="flex-1 py-3">
             <nav className="space-y-1 px-2">
-              {NAV_SECTIONS.map((section) => {
-                const isActive = activeSection === section.id;
+              {navSections.map((section) => {
+                const isActive = validSection === section.id;
                 return (
                   <button
                     key={section.id}
@@ -201,8 +302,8 @@ export default function Home() {
               >
                 <ScrollArea className="flex-1 py-3">
                   <nav className="space-y-1 px-3">
-                    {NAV_SECTIONS.map((section) => {
-                      const isActive = activeSection === section.id;
+                    {navSections.map((section) => {
+                      const isActive = validSection === section.id;
                       return (
                         <button
                           key={section.id}
@@ -226,9 +327,30 @@ export default function Home() {
                     })}
                   </nav>
                 </ScrollArea>
+
+                {/* Mobile user info & logout */}
                 <div className="border-t p-4">
-                  <p className="text-xs text-muted-foreground">PropComply AI + VerifyMe Global</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">Trust Infrastructure Platform v1.0.0</p>
+                  <div className="flex items-center gap-3 mb-3">
+                    <Avatar className="size-8 border" style={{ borderColor: roleDef.color + '40' }}>
+                      <AvatarFallback className="text-xs font-bold" style={{ backgroundColor: roleDef.bgColor, color: roleDef.color }}>
+                        {session.user.avatar || '??'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{session.user.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{session.user.email}</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => signOut({ callbackUrl: '/' })}
+                  >
+                    <LogOut className="size-4 mr-2" />
+                    Sign Out
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground mt-2">PropComply AI + VerifyMe Global v1.0.0</p>
                 </div>
               </motion.aside>
             </>
@@ -241,10 +363,10 @@ export default function Home() {
           <div className="border-b bg-white/60 backdrop-blur-sm px-4 sm:px-6 py-4">
             <div className="max-w-7xl mx-auto">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
-                {SECTION_META[activeSection]?.title}
+                {SECTION_META[validSection]?.title}
               </h2>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {SECTION_META[activeSection]?.subtitle}
+                {SECTION_META[validSection]?.subtitle}
               </p>
             </div>
           </div>
@@ -252,39 +374,44 @@ export default function Home() {
           {/* Section Content */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
             <AnimatePresence mode="wait">
-              {activeSection === 'dashboard' && (
+              {validSection === 'dashboard' && (
                 <motion.div key="dashboard" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <DashboardOverview />
                 </motion.div>
               )}
-              {activeSection === 'identity' && (
+              {validSection === 'identity' && (
                 <motion.div key="identity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <IdentityTrust />
                 </motion.div>
               )}
-              {activeSection === 'compliance' && (
+              {validSection === 'compliance' && (
                 <motion.div key="compliance" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <ComplianceAutomation />
                 </motion.div>
               )}
-              {activeSection === 'risk' && (
+              {validSection === 'risk' && (
                 <motion.div key="risk" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <RiskIntelligence />
                 </motion.div>
               )}
-              {activeSection === 'property' && (
+              {validSection === 'property' && (
                 <motion.div key="property" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <PropertyIntelligence />
                 </motion.div>
               )}
-              {activeSection === 'partners' && (
+              {validSection === 'partners' && (
                 <motion.div key="partners" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <PartnerEcosystem />
                 </motion.div>
               )}
-              {activeSection === 'ai-assistant' && (
+              {validSection === 'ai-assistant' && (
                 <motion.div key="ai-assistant" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <AIAssistant />
+                </motion.div>
+              )}
+              {validSection === 'settings' && (
+                <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <Settings />
                 </motion.div>
               )}
             </AnimatePresence>

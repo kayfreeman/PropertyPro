@@ -44,6 +44,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLe
 import { useApi } from '@/hooks/use-api';
 import { useSession } from 'next-auth/react';
 import { formatDateTime, getStatusStyle } from '@/lib/platform-data';
+import { canAccessSection, type UserRole, type SectionId } from '@/lib/rbac';
 
 // Dashboard data types
 interface DashboardSummary {
@@ -183,7 +184,11 @@ function TrustScoreCircle({ score }: { score: number }) {
   );
 }
 
-export default function DashboardOverview() {
+interface DashboardOverviewProps {
+  onNavigate?: (section: SectionId) => void;
+}
+
+export default function DashboardOverview({ onNavigate }: DashboardOverviewProps = {}) {
   const { data: session } = useSession();
   const { data: dashboard, isLoading: dashboardLoading } = useApi<DashboardData>('dashboard', '/api/dashboard', true, {
     userId: session?.user?.id || '',
@@ -254,8 +259,23 @@ export default function DashboardOverview() {
     },
   ];
 
-  const handleQuickAction = (action: string) => {
-    console.log(`Quick action: ${action}`);
+  const userRole = (session?.user?.role || 'tenant') as UserRole;
+
+  // Quick Actions config — maps each action to a section and checks RBAC access
+  const quickActions = [
+    { label: 'New Verification', icon: Plus, color: 'text-emerald-600', section: 'identity' as SectionId },
+    { label: 'Run Compliance Check', icon: Search, color: 'text-cyan-600', section: 'compliance' as SectionId },
+    { label: 'View Risk Alerts', icon: AlertTriangle, color: 'text-amber-600', section: 'risk' as SectionId },
+    { label: 'Generate Report', icon: FileBarChart, color: 'text-violet-600', section: 'compliance' as SectionId },
+  ];
+
+  // Only show actions the user can access based on their role
+  const visibleActions = quickActions.filter(a => canAccessSection(userRole, a.section));
+
+  const handleQuickAction = (section: SectionId) => {
+    if (onNavigate) {
+      onNavigate(section);
+    }
   };
 
   return (
@@ -455,40 +475,25 @@ export default function DashboardOverview() {
             <CardDescription>Common platform operations</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Button
-                variant="outline"
-                className="h-auto flex-col gap-2 py-4"
-                onClick={() => handleQuickAction('New Verification')}
-              >
-                <Plus className="size-5 text-emerald-600" />
-                <span className="text-xs font-medium">New Verification</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto flex-col gap-2 py-4"
-                onClick={() => handleQuickAction('Run Compliance Check')}
-              >
-                <Search className="size-5 text-cyan-600" />
-                <span className="text-xs font-medium">Run Compliance Check</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto flex-col gap-2 py-4"
-                onClick={() => handleQuickAction('View Risk Alerts')}
-              >
-                <AlertTriangle className="size-5 text-amber-600" />
-                <span className="text-xs font-medium">View Risk Alerts</span>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-auto flex-col gap-2 py-4"
-                onClick={() => handleQuickAction('Generate Report')}
-              >
-                <FileBarChart className="size-5 text-violet-600" />
-                <span className="text-xs font-medium">Generate Report</span>
-              </Button>
-            </div>
+            {visibleActions.length === 0 ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                No quick actions available for your role.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {visibleActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    variant="outline"
+                    className="h-auto flex-col gap-2 py-4"
+                    onClick={() => handleQuickAction(action.section)}
+                  >
+                    <action.icon className={`size-5 ${action.color}`} />
+                    <span className="text-xs font-medium">{action.label}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>

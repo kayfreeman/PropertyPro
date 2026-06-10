@@ -713,3 +713,77 @@
 - RTR Process API: GET returns processes + summary, POST creates process, PATCH updates process fields
 - All 7 steps functional with animated transitions between steps
 - Tabs in Property Intelligence section working correctly
+
+---
+
+## Task 1: Landing Page for PropComply AI + VerifyMe Global
+**Agent**: landing-page-agent
+**Date**: 2026-06-10
+**Status**: ✅ Completed
+
+### Files Created / Modified
+
+1. **`/home/z/my-project/src/components/platform/LandingPage.tsx`** — Comprehensive marketing landing page with 13 sections:
+   - 'use client' directive with Framer Motion animations and `useInView` for scroll-triggered reveals
+   - **Navigation Bar**: Sticky header with Shield icon + "PropComply AI / VerifyMe Global" branding, desktop nav links (Platform, Solutions, Pricing, Resources, About), Sign In CTA button, mobile hamburger menu with animated dropdown
+   - **Hero Section**: Gradient background with hero-trust-network.png overlay, headline "The Trust Infrastructure for Cross-Border Property", 900K+/£450/0 key stats, "Get Started" + "Watch Demo" CTAs
+   - **Problem Section**: "The £2.8B Problem Nobody Solves" with 3 market harm cards (Invisible Financial Identity, Regulatory Double Bind, Lost International Demand), side-by-side "Current Platforms vs PropComply AI" comparison cards
+   - **Solution Section**: "VerifyMe Global — A New Market Category" with 3 Triple-Source Corroboration cards (Biometric Anchor 35%, Behavioural Financial Pattern 35%, Cross-Jurisdictional Corroboration 30%), dark-themed Confidence Score visualization with SVG gauge (87/100), threshold indicator at 80
+   - **Platform Section (8 Core Modules)**: 4-column responsive grid of cards — Agency Onboarding & Authentication, AML/KYC Risk Scoring Engine, CDD Workflow, SAR Filing Engine, Right to Rent Automation, VerifyMe Global Onboarding, Blockchain Audit Trail, Data Intelligence API
+   - **Trust Ladder Section**: "6-Level Identity Trust Ladder" vertical visualization with connected levels L0-L5, icons (User, FileCheck, Fingerprint, Activity, Building2, Landmark), color progression from slate to emerald/teal
+   - **Who It's For Section**: 8 user persona cards (Amara Okafor, David Adeyemi, Elena Vasquez, James Whitfield, Sarah Chen, Mohammed Al-Rashid, Rachel Thompson, Platform Admin) with role, route, and icon
+   - **How It Works Section**: 3-step process (Individual Verifies → Agency Reviews → Property Secured) with numbered circles, icons, and chevron connectors
+   - **Pricing Section**: 4-tier grid (Starter £99, Professional £249 highlighted, Enterprise Custom, Individual £49) with feature lists and CTA buttons
+   - **Regulatory Compliance Section**: 6 regulation cards (UK GDPR/DPA 2018, MLR 2017, Equality Act 2010, Immigration Act 2014, FCA/HMRC, W3C DID Year 2)
+   - **About Us Section**: Founded by Joy Ladegbaye, mission statement, £2.8M ARR / 900K+ stats, 5-year roadmap timeline (UK → W3C DID → EU → Global)
+   - **CTA Section**: Full-width emerald/teal gradient with "Ready to Transform Cross-Border Property Compliance?" headline and Sign In / Request Demo buttons
+   - **Footer**: 4-column layout (Logo + description, Platform links, Legal links, Compliance badges), separator, copyright
+   - **Login Modal**: Dialog component with email/password form + 8 demo account quick-access buttons, same functionality as LoginPage (signIn from next-auth/react, ROLE_DEFINITIONS from @/lib/rbac)
+
+2. **`/home/z/my-project/src/app/page.tsx`** — Updated to use LandingPage:
+   - Changed import from `LoginPage` to `LandingPage`
+   - Updated unauthenticated render: `<LandingPage />` instead of `<LoginPage />`
+
+3. **`/home/z/my-project/public/hero-trust-network.png`** — Generated hero image:
+   - AI-generated abstract digital network visualization
+   - Emerald and teal color scheme with interconnected nodes
+   - 1344x768 landscape format
+
+### Key Design Decisions
+- Used `AnimatedSection` wrapper component with `useInView` for scroll-triggered Framer Motion animations
+- Consistent color palette: emerald (#10b981) and teal (#0d9488) as primary, slate neutrals, red/amber for problem/urgency
+- Mobile-first responsive design with Tailwind responsive prefixes throughout
+- Login modal uses shadcn Dialog component instead of separate page — maintains landing page context
+- Hero section uses layered gradients + semi-transparent background image for depth
+- Confidence Score visualization uses raw SVG with gradient stroke for the circular gauge
+- Trust Ladder uses vertical connected timeline with icon circles and gradient line
+- Pricing cards use ring-2 highlight on the Professional tier for emphasis
+- All CTAs open the login modal (Dialog) rather than navigating away
+
+### Verification
+- Lint passes with 0 errors (1 pre-existing warning in identities/route.ts)
+- Dev server compiling and returning 200 on /
+- Hero image generated and placed in public/
+- Login modal functional with all 8 demo accounts
+- All navigation links scroll smoothly to sections
+- Fully responsive on mobile, tablet, and desktop
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Create comprehensive landing page from PropComply AI + VerifyMe Global requirements document
+
+Work Log:
+- Read the full requirements document at `/home/z/my-project/upload/requirements.txt` (2000+ lines covering BRD, FRD, User Personas, Epics, Technical Architecture)
+- Generated hero image using AI image generation (`/public/hero-trust-network.png`)
+- Created comprehensive LandingPage.tsx with 13 sections extracted from the document
+- Verified page.tsx already imports LandingPage and renders it for unauthenticated users
+- Tested full flow: landing page → sign in modal → dashboard → sign out → landing page
+- All navigation links, login modal, and demo account quick-access work correctly
+
+Stage Summary:
+- Created `/home/z/my-project/src/components/platform/LandingPage.tsx` (68KB, comprehensive marketing website)
+- 13 sections: Nav, Hero, Problem, Solution (Triple-Source), Platform Modules, Trust Ladder, Personas, How It Works, Pricing, Regulatory, About, CTA, Footer
+- Login modal with email/password form + 8 demo account quick-access buttons
+- Lint: 0 errors
+- All navigation and authentication flows verified via Agent Browser

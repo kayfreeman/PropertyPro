@@ -44,7 +44,7 @@ import PropertyIntelligence from '@/components/platform/PropertyIntelligence';
 import PartnerEcosystem from '@/components/platform/PartnerEcosystem';
 import AIAssistant from '@/components/platform/AIAssistant';
 import Settings from '@/components/platform/Settings';
-import LoginPage from '@/components/platform/LoginPage';
+import LandingPage from '@/components/platform/LandingPage';
 import { canAccessSection, getRoleDefinition, type UserRole } from '@/lib/rbac';
 
 type SectionId = 'dashboard' | 'identity' | 'compliance' | 'risk' | 'property' | 'partners' | 'ai-assistant' | 'settings';
@@ -128,7 +128,7 @@ export default function Home() {
   }
 
   if (!session) {
-    return <LoginPage />;
+    return <LandingPage />;
   }
 
   return (

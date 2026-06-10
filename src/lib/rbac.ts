@@ -350,7 +350,7 @@ export const ROLE_PERMISSIONS_MATRIX: Record<UserRole, RolePermissionsMatrix> = 
     identity: { view_own: true },
     compliance: {},
     risk: {},
-    property: { view_all: true, apply: true },
+    property: { view_own: true, apply: true },
     partners: {},
     settings: { view: true },
     users: {},

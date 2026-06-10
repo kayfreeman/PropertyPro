@@ -1211,7 +1211,11 @@ function RolesAccessSettings() {
 // ============================================
 // Main Settings Component
 // ============================================
-export default function Settings() {
+interface SettingsProps {
+  initialTab?: string;
+}
+
+export default function Settings({ initialTab = 'profile' }: SettingsProps) {
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === 'platform_admin';
 
@@ -1221,7 +1225,7 @@ export default function Settings() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
-      <Tabs defaultValue="profile" className="space-y-4">
+      <Tabs defaultValue={initialTab} className="space-y-4">
         <TabsList className="h-10 bg-slate-100 p-1">
           <TabsTrigger value="profile" className="text-xs gap-1.5 data-[state=active]:bg-white">
             <User className="size-3.5" />

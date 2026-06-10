@@ -259,7 +259,11 @@ function DbCheckIndicator({ label, result }: { label: string; result: string }) 
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export default function VerifyMeOnboarding() {
+interface VerifyMeOnboardingProps {
+  onComplete?: () => void;
+}
+
+export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -1700,17 +1704,30 @@ export default function VerifyMeOnboarding() {
               Next
               <ChevronRight className="ml-1 size-4" />
             </Button>
-          ) : (
+          ) : state.agentReviewStatus === 'approved' ? (
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={state.agentReviewStatus !== 'approved'}
               onClick={() => {
-                // Complete - could navigate or show success
+                onComplete?.();
               }}
             >
               <Sparkles className="mr-1 size-4" />
               Complete Onboarding
             </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              {onComplete && (
+                <Button
+                  variant="outline"
+                  onClick={onComplete}
+                  className="gap-1.5"
+                >
+                  <ArrowRight className="size-3.5" />
+                  Return to Profiles
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground">Awaiting approval</span>
+            </div>
           )}
         </div>
       </div>

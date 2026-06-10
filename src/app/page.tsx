@@ -44,7 +44,7 @@ import PropertyIntelligence from '@/components/platform/PropertyIntelligence';
 import PartnerEcosystem from '@/components/platform/PartnerEcosystem';
 import AIAssistant from '@/components/platform/AIAssistant';
 import Settings from '@/components/platform/Settings';
-import LandingPage from '@/components/platform/LandingPage';
+import LoginPage from '@/components/platform/LoginPage';
 import { canAccessSection, getRoleDefinition, type UserRole } from '@/lib/rbac';
 
 type SectionId = 'dashboard' | 'identity' | 'compliance' | 'risk' | 'property' | 'partners' | 'ai-assistant' | 'settings';
@@ -85,11 +85,15 @@ export default function Home() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('profile');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
     try {
-      await signOut({ callbackUrl: '/' });
+      await signOut({ redirect: false });
+      // Reload the current URL (preserves gateway/proxy URL in sandbox)
+      window.location.reload();
     } catch {
       setIsSigningOut(false);
     }
@@ -105,9 +109,12 @@ export default function Home() {
   // Derive valid active section — fallback to first accessible if current is not accessible
   const validSection = canAccessSection(userRole, activeSection) ? activeSection : (navSections[0]?.id || 'dashboard') as SectionId;
 
-  const handleSectionChange = (section: SectionId) => {
+  const handleSectionChange = (section: SectionId, tab?: string) => {
     setActiveSection(section);
     setMobileMenuOpen(false);
+    if (section === 'settings' && tab) {
+      setSettingsTab(tab);
+    }
   };
 
   // Show login page if not authenticated
@@ -128,7 +135,7 @@ export default function Home() {
   }
 
   if (!session) {
-    return <LandingPage />;
+    return <LoginPage />;
   }
 
   return (
@@ -169,8 +176,22 @@ export default function Home() {
                 type="text"
                 placeholder="Search identities, compliance, properties..."
                 className="h-9 w-full rounded-lg border bg-muted/50 pl-9 pr-4 text-sm placeholder:text-muted-foreground focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 transition-colors"
-                readOnly
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (e.target.value.trim()) {
+                    handleSectionChange('identity');
+                  }
+                }}
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -222,11 +243,11 @@ export default function Home() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleSectionChange('settings')} className="cursor-pointer">
+                <DropdownMenuItem onClick={() => handleSectionChange('settings', 'profile')} className="cursor-pointer">
                   <User className="mr-2 size-4" />
                   Profile & Settings
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSectionChange('settings')} className="cursor-pointer">
+                <DropdownMenuItem onClick={() => handleSectionChange('settings', 'security')} className="cursor-pointer">
                   <Shield className="mr-2 size-4" />
                   Security
                 </DropdownMenuItem>
@@ -404,7 +425,7 @@ export default function Home() {
               )}
               {validSection === 'identity' && (
                 <motion.div key="identity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-                  <IdentityTrust />
+                  <IdentityTrust searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
                 </motion.div>
               )}
               {validSection === 'compliance' && (
@@ -419,7 +440,7 @@ export default function Home() {
               )}
               {validSection === 'property' && (
                 <motion.div key="property" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-                  <PropertyIntelligence />
+                  <PropertyIntelligence onNavigate={handleSectionChange} />
                 </motion.div>
               )}
               {validSection === 'partners' && (
@@ -433,8 +454,8 @@ export default function Home() {
                 </motion.div>
               )}
               {validSection === 'settings' && (
-                <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-                  <Settings />
+                <motion.div key={`settings-${settingsTab}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <Settings initialTab={settingsTab} />
                 </motion.div>
               )}
             </AnimatePresence>

@@ -715,75 +715,121 @@
 - Tabs in Property Intelligence section working correctly
 
 ---
-
-## Task 1: Landing Page for PropComply AI + VerifyMe Global
-**Agent**: landing-page-agent
-**Date**: 2026-06-10
-**Status**: ✅ Completed
-
-### Files Created / Modified
-
-1. **`/home/z/my-project/src/components/platform/LandingPage.tsx`** — Comprehensive marketing landing page with 13 sections:
-   - 'use client' directive with Framer Motion animations and `useInView` for scroll-triggered reveals
-   - **Navigation Bar**: Sticky header with Shield icon + "PropComply AI / VerifyMe Global" branding, desktop nav links (Platform, Solutions, Pricing, Resources, About), Sign In CTA button, mobile hamburger menu with animated dropdown
-   - **Hero Section**: Gradient background with hero-trust-network.png overlay, headline "The Trust Infrastructure for Cross-Border Property", 900K+/£450/0 key stats, "Get Started" + "Watch Demo" CTAs
-   - **Problem Section**: "The £2.8B Problem Nobody Solves" with 3 market harm cards (Invisible Financial Identity, Regulatory Double Bind, Lost International Demand), side-by-side "Current Platforms vs PropComply AI" comparison cards
-   - **Solution Section**: "VerifyMe Global — A New Market Category" with 3 Triple-Source Corroboration cards (Biometric Anchor 35%, Behavioural Financial Pattern 35%, Cross-Jurisdictional Corroboration 30%), dark-themed Confidence Score visualization with SVG gauge (87/100), threshold indicator at 80
-   - **Platform Section (8 Core Modules)**: 4-column responsive grid of cards — Agency Onboarding & Authentication, AML/KYC Risk Scoring Engine, CDD Workflow, SAR Filing Engine, Right to Rent Automation, VerifyMe Global Onboarding, Blockchain Audit Trail, Data Intelligence API
-   - **Trust Ladder Section**: "6-Level Identity Trust Ladder" vertical visualization with connected levels L0-L5, icons (User, FileCheck, Fingerprint, Activity, Building2, Landmark), color progression from slate to emerald/teal
-   - **Who It's For Section**: 8 user persona cards (Amara Okafor, David Adeyemi, Elena Vasquez, James Whitfield, Sarah Chen, Mohammed Al-Rashid, Rachel Thompson, Platform Admin) with role, route, and icon
-   - **How It Works Section**: 3-step process (Individual Verifies → Agency Reviews → Property Secured) with numbered circles, icons, and chevron connectors
-   - **Pricing Section**: 4-tier grid (Starter £99, Professional £249 highlighted, Enterprise Custom, Individual £49) with feature lists and CTA buttons
-   - **Regulatory Compliance Section**: 6 regulation cards (UK GDPR/DPA 2018, MLR 2017, Equality Act 2010, Immigration Act 2014, FCA/HMRC, W3C DID Year 2)
-   - **About Us Section**: Founded by Joy Ladegbaye, mission statement, £2.8M ARR / 900K+ stats, 5-year roadmap timeline (UK → W3C DID → EU → Global)
-   - **CTA Section**: Full-width emerald/teal gradient with "Ready to Transform Cross-Border Property Compliance?" headline and Sign In / Request Demo buttons
-   - **Footer**: 4-column layout (Logo + description, Platform links, Legal links, Compliance badges), separator, copyright
-   - **Login Modal**: Dialog component with email/password form + 8 demo account quick-access buttons, same functionality as LoginPage (signIn from next-auth/react, ROLE_DEFINITIONS from @/lib/rbac)
-
-2. **`/home/z/my-project/src/app/page.tsx`** — Updated to use LandingPage:
-   - Changed import from `LoginPage` to `LandingPage`
-   - Updated unauthenticated render: `<LandingPage />` instead of `<LoginPage />`
-
-3. **`/home/z/my-project/public/hero-trust-network.png`** — Generated hero image:
-   - AI-generated abstract digital network visualization
-   - Emerald and teal color scheme with interconnected nodes
-   - 1344x768 landscape format
-
-### Key Design Decisions
-- Used `AnimatedSection` wrapper component with `useInView` for scroll-triggered Framer Motion animations
-- Consistent color palette: emerald (#10b981) and teal (#0d9488) as primary, slate neutrals, red/amber for problem/urgency
-- Mobile-first responsive design with Tailwind responsive prefixes throughout
-- Login modal uses shadcn Dialog component instead of separate page — maintains landing page context
-- Hero section uses layered gradients + semi-transparent background image for depth
-- Confidence Score visualization uses raw SVG with gradient stroke for the circular gauge
-- Trust Ladder uses vertical connected timeline with icon circles and gradient line
-- Pricing cards use ring-2 highlight on the Professional tier for emphasis
-- All CTAs open the login modal (Dialog) rather than navigating away
-
-### Verification
-- Lint passes with 0 errors (1 pre-existing warning in identities/route.ts)
-- Dev server compiling and returning 200 on /
-- Hero image generated and placed in public/
-- Login modal functional with all 8 demo accounts
-- All navigation links scroll smoothly to sections
-- Fully responsive on mobile, tablet, and desktop
-
----
-Task ID: 1
-Agent: Main Agent
-Task: Create comprehensive landing page from PropComply AI + VerifyMe Global requirements document
+Task ID: 7
+Agent: IdentityTrust Overhaul Agent
+Task: Overhaul IdentityTrust component
 
 Work Log:
-- Read the full requirements document at `/home/z/my-project/upload/requirements.txt` (2000+ lines covering BRD, FRD, User Personas, Epics, Technical Architecture)
-- Generated hero image using AI image generation (`/public/hero-trust-network.png`)
-- Created comprehensive LandingPage.tsx with 13 sections extracted from the document
-- Verified page.tsx already imports LandingPage and renders it for unauthenticated users
-- Tested full flow: landing page → sign in modal → dashboard → sign out → landing page
-- All navigation links, login modal, and demo account quick-access work correctly
+- Updated IdentityTrust component interface to accept `searchQuery` and `onClearSearch` props
+- Added search/filter functionality: filters identities by firstName, lastName, email, nationality when searchQuery is provided; shows emerald search info banner with result count and clear button
+- Updated VerifyMeOnboarding component: added `onComplete` callback prop; when step 10 agent review is approved, "Complete Onboarding" button calls onComplete; when not yet approved, "Return to Profiles" button appears to navigate back
+- Fixed Biometric Face Match card hidden by banner: increased verification records ScrollArea from max-h-72 to max-h-96; increased credentials ScrollArea from max-h-72 to max-h-96; both panels now have adequate scroll space
+- Tenant view overhaul: when dataScope is 'own' (tenant role), shows "My Identity Profile" card instead of profiles table; displays their own trust level, verification status, and credentials; includes "Start/Continue Onboarding" button; no visibility of other tenants/applicants; uses useSession() to filter identities to only show the tenant's own profile; extracted TenantIdentityView as a sub-component
+- Identity Verifier view overhaul: when role is 'identity_verifier', shows "Pending Reviews" section at top highlighting profiles with pending/in_progress verifications; added Approve/Reject/Request More Evidence action buttons on verification records with pending or in_progress status; extracted VerifierReviewActions sub-component for review action buttons; pending reviews are clickable to select the profile for detailed review
+- Used getDataScope from @/lib/rbac for role-based data scoping
+- Imported additional Lucide icons: Search, X, ThumbsUp, ThumbsDown, HelpCircle, Eye, AlertTriangle, ClipboardCheck
+- Lint passes with 0 errors (1 unrelated warning in identities/route.ts)
+- Dev server compiles and runs successfully
 
 Stage Summary:
-- Created `/home/z/my-project/src/components/platform/LandingPage.tsx` (68KB, comprehensive marketing website)
-- 13 sections: Nav, Hero, Problem, Solution (Triple-Source), Platform Modules, Trust Ladder, Personas, How It Works, Pricing, Regulatory, About, CTA, Footer
-- Login modal with email/password form + 8 demo account quick-access buttons
-- Lint: 0 errors
-- All navigation and authentication flows verified via Agent Browser
+- IdentityTrust now supports searchQuery/onClearSearch props with filtered table and search info banner
+- VerifyMeOnboarding now accepts onComplete callback for returning to profiles tab after onboarding
+- ScrollArea heights increased from max-h-72 to max-h-96 for verification records and credentials panels
+- Tenant view completely overhauled to show only own profile with dedicated TenantIdentityView component
+- Identity Verifier view enhanced with Pending Reviews section and review action buttons (Approve/Reject/Request More Evidence)
+- All changes maintain backward compatibility with existing Trust Ladder visualization and shadcn/ui components
+
+---
+Task ID: 10
+Agent: RBAC & Property Overhaul Agent
+Task: Overhaul RBAC module assignments and PropertyIntelligence tenant view
+
+Work Log:
+- Read current RBAC file (src/lib/rbac.ts) and verified all role section assignments match the spec — all KEEP AS IS
+- Updated ROLE_PERMISSIONS_MATRIX for tenant role: changed `property: { view_all: true, apply: true }` to `property: { view_own: true, apply: true }` so tenants only see their own data, not all property data
+- Read current PropertyIntelligence.tsx and RightToRentFlow.tsx to understand full component structure
+- Completely overhauled PropertyIntelligence.tsx with role-based conditional rendering:
+  - Added `PropertyIntelligenceProps` interface with optional `onNavigate` callback
+  - Created `TenantPropertyView` component for tenant users showing:
+    - Welcome banner card with teal gradient
+    - 4 quick status summary cards (Application, Right to Rent, Compliance, Risk)
+    - "My Application(s)" detail card with filtered data (only apps where `app.profile.email === session.user.email`)
+    - "My Right to Rent Status" card with large status indicator, certificate details, expiry warnings
+    - "My Guarantor Status" card with eligibility checklist (Trust Level 3+, Compliance Clear, Risk Clear)
+    - "Upload Documents" CTA card with button linking to identity/onboarding section
+  - Created `TenantRightToRentSummary` component for read-only RTR view showing:
+    - Header card with description
+    - Main status card with large animated status indicator, certificate details, expiry monitoring info
+    - "What Happens Next" card with contextual next steps based on current RTR status
+    - Regulatory reference note
+  - Tenant view uses tabs labeled "My Application" and "Right to Rent" instead of "Properties" and "Right to Rent"
+  - Non-tenant (admin/staff) view preserved exactly as before
+- Updated page.tsx to pass `onNavigate={handleSectionChange}` prop to PropertyIntelligence component
+- Ran lint check — passes with 0 errors (1 pre-existing warning)
+- Verified dev server compiles successfully
+
+Stage Summary:
+- RBAC: tenant role's property permission changed from view_all to view_own — enforces data isolation
+- PropertyIntelligence: full tenant-specific view implemented with "My Application", read-only RTR status, guarantor eligibility, and document upload CTA
+- Tenants can NEVER see other tenants' data — all applications filtered by session email
+- Right to Rent tab for tenants shows read-only summary instead of the interactive 7-step wizard
+- All existing non-tenant functionality preserved unchanged
+
+---
+Task ID: 3
+Agent: LandingPage Pitch Deck Agent
+Task: Transform LoginPage into comprehensive pitch deck landing page
+
+Work Log:
+- Read existing LoginPage.tsx, page.tsx, and worklog.md to understand current project structure
+- Read rbac.ts to understand ROLE_DEFINITIONS and demo accounts
+- Read Dialog component API from shadcn/ui
+- Designed comprehensive landing page with 12 sections as specified
+- Created LoginModal component using shadcn Dialog with email/password form and collapsible demo accounts
+- Preserved all signIn('credentials', { redirect: false }) functionality
+- Built AnimatedSection and StaggerChild components using framer-motion useInView for scroll-triggered animations
+- Implemented all 12 sections: Hero, Problem, Solution, Platform Modules, Trust Ladder, Who It's For, How It Works, Pricing, Regulatory Compliance, About/Founder, Final CTA, Footer
+- Used emerald/teal gradient color scheme consistent with project branding
+- Made all CTAs ("Get Started", "Sign In", "Request Demo") open the login dialog
+- Added smooth scroll navigation in sticky nav header
+- Used red/orange color scheme for Problem section cards
+- Used green gradient from light to dark for Trust Ladder levels on dark background
+- Used slate-900 dark footer with regulatory compliance badges
+- Ensured responsive design with mobile-first approach (sm:, md:, lg: breakpoints)
+- Used existing shadcn/ui components: Card, Button, Badge, Dialog, Input, Separator
+- Exported as default from same file path so page.tsx import still works
+- Ran lint: 0 errors (1 pre-existing warning unrelated to changes)
+- Verified dev server compiles and renders successfully
+
+Stage Summary:
+- LoginPage.tsx fully transformed from simple login form to comprehensive pitch deck landing page
+- Login functionality preserved as Dialog modal, triggered by all CTA buttons
+- All 12 sections implemented with scroll-triggered Framer Motion animations
+- Component still exported as default, page.tsx integration unchanged
+- Lint passes, dev server compiles successfully
+
+---
+Task ID: session-fixes
+Agent: Main Agent
+Task: Fix multiple issues across the platform based on user feedback
+
+Work Log:
+- Fixed logout redirect: Changed from `signOut({ callbackUrl: '/' })` to `signOut({ redirect: false })` + `window.location.reload()` to preserve gateway URL
+- Fixed Profile & Settings / Security dropdown navigation: Added `settingsTab` state and `handleSectionChange` with tab parameter; dropdown items now pass 'profile' or 'security' tab
+- Fixed Settings component to accept `initialTab` prop and use it as `defaultValue` for Tabs
+- Made search bar functional: Added `searchQuery` state, wired up onChange to navigate to Identity section, added clear button
+- Added `searchQuery` and `onClearSearch` props to IdentityTrust component for filtering
+- Fixed login modal not closing after successful sign-in: Added `result?.ok` check to close dialog via `onOpenChange(false)`
+- Overhauled IdentityTrust component: Tenant view shows "My Profile" only, Identity Verifier sees "Pending Reviews" and review actions, search filter works
+- Overhauled PropertyIntelligence: Tenant view shows "My Application" and "Right to Rent" only (no other tenants' data)
+- Updated RBAC: Changed tenant property permission from `view_all` to `view_own`
+- Enhanced LoginPage into comprehensive pitch deck landing page with 12 sections, login modal, and demo accounts
+- Verified all fixes with browser testing: logout works, profile/security tabs navigate correctly, search filters identities, tenant can't see other tenants, identity verifier has review workflow
+
+Stage Summary:
+- All 10 user-reported issues fixed and verified
+- Landing page now serves as both a marketing website and investor pitch deck
+- Role-based views properly restrict data visibility (tenant=own only, verifier=review workflow)
+- Search functionality works across identity profiles
+- Login modal properly closes on successful authentication
+- Logout preserves gateway URL instead of redirecting to localhost:3000

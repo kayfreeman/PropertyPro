@@ -22,6 +22,12 @@ import {
   UserCheck,
   RefreshCw,
   ShieldCheck,
+  Upload,
+  FileText,
+  Award,
+  Bell,
+  Lock,
+  ExternalLink,
 } from 'lucide-react';
 import {
   Card,
@@ -39,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -105,6 +112,10 @@ interface PropertiesResponse {
   };
 }
 
+interface PropertyIntelligenceProps {
+  onNavigate?: (section: string) => void;
+}
+
 const fadeInUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0 },
@@ -160,8 +171,900 @@ function YesNoIcon({ value }: { value: boolean }) {
   );
 }
 
-export default function PropertyIntelligence() {
+// ===================== TENANT VIEW =====================
+
+function TenantPropertyView({
+  properties,
+  allApplications,
+  sessionEmail,
+  onNavigate,
+}: {
+  properties: Property[];
+  allApplications: PropertyApplication[];
+  sessionEmail: string;
+  onNavigate?: (section: string) => void;
+}) {
+  // Filter to only the tenant's own applications
+  const myApplications = allApplications.filter(
+    (app) => app.profile.email === sessionEmail
+  );
+
+  // Derive tenant's RTR status
+  const myRtrStatus = myApplications.length > 0 ? myApplications[0].rightToRent : 'not_started';
+  const myComplianceClear = myApplications.length > 0 ? myApplications[0].complianceClear : false;
+  const myRiskClear = myApplications.length > 0 ? myApplications[0].riskClear : false;
+  const myGuarantorReplaced = myApplications.length > 0 ? myApplications[0].guarantorReplaced : false;
+  const myTrustLevel = myApplications.length > 0 ? myApplications[0].profile.trustLevel : 0;
+  const guarantorEligible = myTrustLevel >= 3 && myComplianceClear && myRiskClear;
+
+  // RTR status config
+  const rtrStatusConfig: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode; description: string }> = {
+    not_started: {
+      label: 'Not Started',
+      color: '#94a3b8',
+      bg: '#f1f5f9',
+      icon: <Clock className="size-5 text-slate-400" />,
+      description: 'Your Right to Rent check has not been initiated yet. Please complete your onboarding to begin the verification process.',
+    },
+    pending: {
+      label: 'Pending',
+      color: '#d97706',
+      bg: '#fffbeb',
+      icon: <Clock className="size-5 text-amber-500" />,
+      description: 'Your Right to Rent verification is in progress. The Home Office database is being queried for your immigration status.',
+    },
+    verified: {
+      label: 'Verified',
+      color: '#10b981',
+      bg: '#ecfdf5',
+      icon: <CheckCircle2 className="size-5 text-emerald-500" />,
+      description: 'Your Right to Rent status has been verified. You are cleared to rent property in the UK under the Immigration Act 2014.',
+    },
+    failed: {
+      label: 'Failed',
+      color: '#ef4444',
+      bg: '#fef2f2',
+      icon: <XCircle className="size-5 text-red-500" />,
+      description: 'Your Right to Rent check could not be verified. Please contact support or submit additional documentation.',
+    },
+    expired: {
+      label: 'Expired',
+      color: '#6b7280',
+      bg: '#f9fafb',
+      icon: <AlertTriangle className="size-5 text-gray-500" />,
+      description: 'Your Right to Rent certificate has expired. A repeat check is required to maintain compliance with the Immigration Act 2014.',
+    },
+  };
+
+  const currentRtr = rtrStatusConfig[myRtrStatus] || rtrStatusConfig.not_started;
+
+  return (
+    <motion.div
+      className="space-y-6"
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+    >
+      {/* Welcome banner */}
+      <motion.div variants={fadeInUp}>
+        <Card className="border-teal-200 bg-gradient-to-r from-teal-50 to-emerald-50">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-start gap-4">
+              <div className="size-12 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shrink-0 shadow-sm">
+                <Building2 className="size-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-semibold text-teal-900">My Property Dashboard</h3>
+                <p className="text-sm text-teal-700 mt-1 leading-relaxed">
+                  Track your property application, Right to Rent verification, compliance status, and guarantor eligibility — all in one place.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Quick Status Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Application Status */}
+        <motion.div variants={fadeInUp}>
+          <Card className="h-full">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Application</p>
+                  <p className="text-lg font-bold mt-1">
+                    {myApplications.length > 0 ? (
+                      <StatusBadge status={myApplications[0].status} />
+                    ) : (
+                      <span className="text-muted-foreground text-base">No application</span>
+                    )}
+                  </p>
+                </div>
+                <div className="size-10 rounded-lg bg-violet-50 flex items-center justify-center">
+                  <FileCheck className="size-5 text-violet-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Right to Rent */}
+        <motion.div variants={fadeInUp}>
+          <Card className="h-full">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Right to Rent</p>
+                  <div className="mt-1">
+                    <Badge
+                      className="font-medium"
+                      style={{ backgroundColor: currentRtr.bg, color: currentRtr.color, borderColor: 'transparent' }}
+                    >
+                      {currentRtr.label}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="size-10 rounded-lg bg-teal-50 flex items-center justify-center">
+                  <ShieldCheck className="size-5 text-teal-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Compliance Clear */}
+        <motion.div variants={fadeInUp}>
+          <Card className="h-full">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Compliance</p>
+                  <p className="text-lg font-bold mt-1">
+                    {myApplications.length > 0 ? (
+                      <span className={myComplianceClear ? 'text-emerald-600' : 'text-red-500'}>
+                        {myComplianceClear ? 'Clear' : 'Not Clear'}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-base">Pending</span>
+                    )}
+                  </p>
+                </div>
+                <div className="size-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: myComplianceClear ? '#ecfdf5' : '#fef2f2' }}>
+                  {myComplianceClear ? (
+                    <CheckCircle2 className="size-5 text-emerald-600" />
+                  ) : (
+                    <XCircle className="size-5 text-red-500" />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Risk Clear */}
+        <motion.div variants={fadeInUp}>
+          <Card className="h-full">
+            <CardContent className="p-4 md:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Risk</p>
+                  <p className="text-lg font-bold mt-1">
+                    {myApplications.length > 0 ? (
+                      <span className={myRiskClear ? 'text-emerald-600' : 'text-red-500'}>
+                        {myRiskClear ? 'Clear' : 'Not Clear'}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-base">Pending</span>
+                    )}
+                  </p>
+                </div>
+                <div className="size-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: myRiskClear ? '#ecfdf5' : '#fef2f2' }}>
+                  {myRiskClear ? (
+                    <CheckCircle2 className="size-5 text-emerald-600" />
+                  ) : (
+                    <XCircle className="size-5 text-red-500" />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* My Applications Detail */}
+      <motion.div variants={fadeInUp}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileCheck className="size-5 text-teal-600" />
+              My Application{myApplications.length !== 1 ? 's' : ''}
+            </CardTitle>
+            <CardDescription>
+              Your property application details and status
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {myApplications.length > 0 ? (
+              <div className="space-y-4">
+                {myApplications.map((app) => {
+                  const property = properties.find((p) => p.id === app.propertyId);
+                  return (
+                    <Card key={app.id} className="border shadow-none">
+                      <CardContent className="p-4 md:p-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Application Info */}
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-semibold text-sm">Application Status</h4>
+                              <StatusBadge status={app.status} />
+                            </div>
+                            <Separator />
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Type</p>
+                                <Badge variant="outline" className="text-xs capitalize mt-0.5">
+                                  {app.applicationType}
+                                </Badge>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Submitted</p>
+                                <p className="text-sm font-medium mt-0.5">{formatDate(app.submittedAt)}</p>
+                              </div>
+                              {app.monthlyAmount && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Monthly Amount</p>
+                                  <p className="text-sm font-medium mt-0.5">&pound;{app.monthlyAmount.toLocaleString()}</p>
+                                </div>
+                              )}
+                              {app.depositAmount && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Deposit</p>
+                                  <p className="text-sm font-medium mt-0.5">&pound;{app.depositAmount.toLocaleString()}</p>
+                                </div>
+                              )}
+                              {app.startDate && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Start Date</p>
+                                  <p className="text-sm font-medium mt-0.5">{formatDate(app.startDate)}</p>
+                                </div>
+                              )}
+                              {app.decidedAt && (
+                                <div>
+                                  <p className="text-xs text-muted-foreground">Decided</p>
+                                  <p className="text-sm font-medium mt-0.5">{formatDate(app.decidedAt)}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Property Info */}
+                          <div className="space-y-4">
+                            <div>
+                              <h4 className="font-semibold text-sm mb-2">Property</h4>
+                              {property ? (
+                                <div className="p-3 rounded-lg bg-muted/30 border space-y-2">
+                                  <div className="flex items-start gap-2">
+                                    <MapPin className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                                    <div>
+                                      <p className="font-medium text-sm">{property.address}</p>
+                                      <p className="text-xs text-muted-foreground">{property.city}, {property.postcode}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <PropertyTypeBadge type={property.propertyType} />
+                                    {property.bedrooms && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {property.bedrooms} bed{property.bedrooms > 1 ? 's' : ''}
+                                      </Badge>
+                                    )}
+                                    <StatusBadge status={property.complianceStatus} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">Property details not available</p>
+                              )}
+                            </div>
+
+                            {/* Clearance indicators */}
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="text-center p-2 rounded-lg border">
+                                <p className="text-[10px] text-muted-foreground mb-1">Compliance</p>
+                                <YesNoIcon value={app.complianceClear} />
+                              </div>
+                              <div className="text-center p-2 rounded-lg border">
+                                <p className="text-[10px] text-muted-foreground mb-1">Risk</p>
+                                <YesNoIcon value={app.riskClear} />
+                              </div>
+                              <div className="text-center p-2 rounded-lg border">
+                                <p className="text-[10px] text-muted-foreground mb-1">Right to Rent</p>
+                                <StatusBadge status={app.rightToRent} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Building2 className="size-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="font-medium text-muted-foreground">No Property Applications Found</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  You haven&apos;t submitted any property applications yet. Complete your onboarding to get started.
+                </p>
+                <Button
+                  className="mt-4 bg-teal-600 hover:bg-teal-700 text-white gap-2"
+                  onClick={() => onNavigate?.('identity')}
+                >
+                  <Upload className="size-4" />
+                  Start Onboarding
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Right to Rent & Guarantor Status Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* My Right to Rent Status */}
+        <motion.div variants={fadeInUp}>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="size-5 text-teal-600" />
+                My Right to Rent Status
+              </CardTitle>
+              <CardDescription>
+                Immigration Act 2014 — Section 22
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Large status indicator */}
+              <div className="flex flex-col items-center gap-3 py-4">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 200 }}
+                  className="size-16 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: currentRtr.bg }}
+                >
+                  {currentRtr.icon}
+                </motion.div>
+                <Badge
+                  className="text-sm px-4 py-1.5 font-semibold"
+                  style={{ backgroundColor: currentRtr.bg, color: currentRtr.color, borderColor: 'transparent' }}
+                >
+                  {currentRtr.label}
+                </Badge>
+              </div>
+
+              <Separator />
+
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {currentRtr.description}
+              </p>
+
+              {/* Certificate details if verified */}
+              {myRtrStatus === 'verified' && myApplications.length > 0 && (
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-800">
+                    <Award className="size-4" />
+                    <p className="text-sm font-medium">Certificate Active</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-emerald-600">Status:</span>{' '}
+                      <span className="font-medium text-emerald-800">Verified</span>
+                    </div>
+                    <div>
+                      <span className="text-emerald-600">Monitoring:</span>{' '}
+                      <span className="font-medium text-emerald-800">Active</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+                    <Bell className="size-3" />
+                    <span>You will be notified before your certificate expires</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Expiry warning if expired */}
+              {myRtrStatus === 'expired' && (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+                  <div className="flex items-center gap-2 text-amber-800">
+                    <AlertTriangle className="size-4" />
+                    <p className="text-sm font-medium">Action Required</p>
+                  </div>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Your Right to Rent certificate has expired. A repeat check is required under the Immigration Act 2014. Please contact your letting agent or upload updated documents.
+                  </p>
+                </div>
+              )}
+
+              {/* Regulatory reference */}
+              <div className="flex items-center gap-2 p-2 rounded-md bg-teal-50 text-teal-700 text-xs">
+                <Lock className="size-4 shrink-0" />
+                <span>Automated verification via Home Office database — your data is encrypted and secure</span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* My Guarantor Status */}
+        <motion.div variants={fadeInUp}>
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="size-5 text-teal-600" />
+                My Guarantor Status
+              </CardTitle>
+              <CardDescription>
+                Trust-based guarantor replacement eligibility
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Current guarantor status */}
+              <div className="flex flex-col items-center gap-3 py-4">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', stiffness: 200 }}
+                  className={`size-16 rounded-full flex items-center justify-center ${
+                    myGuarantorReplaced
+                      ? 'bg-emerald-50'
+                      : guarantorEligible
+                        ? 'bg-amber-50'
+                        : 'bg-gray-50'
+                  }`}
+                >
+                  {myGuarantorReplaced ? (
+                    <CheckCircle2 className="size-8 text-emerald-600" />
+                  ) : guarantorEligible ? (
+                    <RefreshCw className="size-8 text-amber-500" />
+                  ) : (
+                    <Clock className="size-8 text-gray-400" />
+                  )}
+                </motion.div>
+                <Badge
+                  className="text-sm px-4 py-1.5 font-semibold"
+                  style={{
+                    backgroundColor: myGuarantorReplaced ? '#ecfdf5' : guarantorEligible ? '#fffbeb' : '#f1f5f9',
+                    color: myGuarantorReplaced ? '#10b981' : guarantorEligible ? '#d97706' : '#94a3b8',
+                    borderColor: 'transparent',
+                  }}
+                >
+                  {myGuarantorReplaced ? 'Guarantor Replaced' : guarantorEligible ? 'Eligible for Replacement' : 'Not Yet Eligible'}
+                </Badge>
+              </div>
+
+              <Separator />
+
+              {/* Status detail */}
+              {myGuarantorReplaced ? (
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-100 space-y-2">
+                  <p className="text-sm font-medium text-emerald-800">
+                    Guarantor Replacement Certificate Issued
+                  </p>
+                  <p className="text-xs text-emerald-700 leading-relaxed">
+                    Your trust credentials have been used in place of a traditional guarantor. This certificate is accepted by partner landlords and letting agents on the PropComply platform.
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs border-emerald-200 text-emerald-700">
+                      Trust Level {myTrustLevel}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs border-emerald-200 text-emerald-700">
+                      Compliance Clear
+                    </Badge>
+                    <Badge variant="outline" className="text-xs border-emerald-200 text-emerald-700">
+                      Risk Clear
+                    </Badge>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    PropComply&apos;s Trust Ladder enables verified profiles to replace traditional guarantor requirements. Achieve Trust Level 3+ with clear compliance and risk checks to become eligible.
+                  </p>
+                  {/* Requirements checklist */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      {myTrustLevel >= 3 ? (
+                        <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <XCircle className="size-4 text-red-400 shrink-0" />
+                      )}
+                      <span className={myTrustLevel >= 3 ? 'text-emerald-700' : 'text-muted-foreground'}>
+                        Trust Level 3+ (Current: {myTrustLevel})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      {myComplianceClear ? (
+                        <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <XCircle className="size-4 text-red-400 shrink-0" />
+                      )}
+                      <span className={myComplianceClear ? 'text-emerald-700' : 'text-muted-foreground'}>
+                        Compliance Clear
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      {myRiskClear ? (
+                        <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <XCircle className="size-4 text-red-400 shrink-0" />
+                      )}
+                      <span className={myRiskClear ? 'text-emerald-700' : 'text-muted-foreground'}>
+                        Risk Clear
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info box */}
+              <div className="p-3 rounded-lg bg-gradient-to-br from-teal-50 to-emerald-50 border border-teal-100">
+                <p className="text-xs font-semibold text-teal-800 mb-1">How It Works</p>
+                <p className="text-xs text-teal-700 leading-relaxed">
+                  When you reach Trust Level 3+ with clear compliance and risk checks, PropComply issues a Guarantor Replacement Certificate — accepted by partner landlords and letting agents, removing the need for a traditional guarantor.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Upload Documents CTA */}
+      <motion.div variants={fadeInUp}>
+        <Card className="border-dashed border-2 border-teal-200 bg-teal-50/30">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="size-12 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
+                <Upload className="size-6 text-teal-600" />
+              </div>
+              <div className="flex-1 text-center sm:text-left">
+                <h4 className="font-semibold text-sm">Upload Documents</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Complete your identity verification and upload required documents to progress your application.
+                </p>
+              </div>
+              <Button
+                className="bg-teal-600 hover:bg-teal-700 text-white gap-2 shrink-0"
+                onClick={() => onNavigate?.('identity')}
+              >
+                <ExternalLink className="size-4" />
+                Go to Onboarding
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ===================== TENANT RTR READ-ONLY SUMMARY =====================
+
+function TenantRightToRentSummary({
+  allApplications,
+  sessionEmail,
+}: {
+  allApplications: PropertyApplication[];
+  sessionEmail: string;
+}) {
+  const myApps = allApplications.filter((a) => a.profile.email === sessionEmail);
+  const myRtrStatus = myApps.length > 0 ? myApps[0].rightToRent : 'not_started';
+
+  // Simulated RTR data based on status
+  const rtrDetails: Record<string, {
+    certificateToken: string | null;
+    issuedAt: string | null;
+    expiresAt: string | null;
+    homeOfficeRef: string | null;
+    monitoringActive: boolean;
+  }> = {
+    verified: {
+      certificateToken: 'RTR-CERT-' + (myApps[0]?.id?.substring(0, 8) || '00000000').toUpperCase(),
+      issuedAt: myApps[0]?.submittedAt || null,
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      homeOfficeRef: 'HO-RTR-' + Date.now().toString(36).toUpperCase().substring(0, 8),
+      monitoringActive: true,
+    },
+    pending: {
+      certificateToken: null,
+      issuedAt: null,
+      expiresAt: null,
+      homeOfficeRef: null,
+      monitoringActive: false,
+    },
+    failed: {
+      certificateToken: null,
+      issuedAt: null,
+      expiresAt: null,
+      homeOfficeRef: 'HO-RTR-FAILED-' + Date.now().toString(36).toUpperCase().substring(0, 6),
+      monitoringActive: false,
+    },
+    expired: {
+      certificateToken: 'RTR-CERT-EXPIRED',
+      issuedAt: new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+      homeOfficeRef: 'HO-RTR-' + Date.now().toString(36).toUpperCase().substring(0, 8),
+      monitoringActive: false,
+    },
+    not_started: {
+      certificateToken: null,
+      issuedAt: null,
+      expiresAt: null,
+      homeOfficeRef: null,
+      monitoringActive: false,
+    },
+  };
+
+  const details = rtrDetails[myRtrStatus] || rtrDetails.not_started;
+
+  // Status configuration
+  const statusConfig: Record<string, { label: string; color: string; bg: string; description: string }> = {
+    not_started: { label: 'Not Started', color: '#94a3b8', bg: '#f1f5f9', description: 'Your Right to Rent check has not been initiated yet.' },
+    pending: { label: 'Verification In Progress', color: '#d97706', bg: '#fffbeb', description: 'Your documents are being verified against the Home Office database.' },
+    verified: { label: 'Verified & Active', color: '#10b981', bg: '#ecfdf5', description: 'Your Right to Rent has been verified. Certificate is active and being monitored.' },
+    failed: { label: 'Verification Failed', color: '#ef4444', bg: '#fef2f2', description: 'The verification check could not confirm your right to rent. Additional documentation may be required.' },
+    expired: { label: 'Certificate Expired', color: '#6b7280', bg: '#f9fafb', description: 'Your Right to Rent certificate has expired. A repeat check is required.' },
+  };
+
+  const currentStatus = statusConfig[myRtrStatus] || statusConfig.not_started;
+
+  return (
+    <motion.div
+      className="space-y-6"
+      variants={staggerContainer}
+      initial="hidden"
+      animate="visible"
+    >
+      {/* Header Card */}
+      <motion.div variants={fadeInUp}>
+        <Card className="border-teal-200 bg-gradient-to-r from-teal-50 to-emerald-50">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex items-center gap-4">
+              <div className="size-12 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shrink-0 shadow-sm">
+                <ShieldCheck className="size-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-teal-900">My Right to Rent Status</h3>
+                <p className="text-sm text-teal-700">
+                  Read-only view of your Right to Rent verification status
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Main Status Card */}
+      <motion.div variants={fadeInUp}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="size-5 text-teal-600" />
+              Current Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Large status indicator */}
+            <div className="flex flex-col items-center gap-4 py-6">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200 }}
+                className="size-20 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: currentStatus.bg }}
+              >
+                {myRtrStatus === 'verified' ? (
+                  <CheckCircle2 className="size-10 text-emerald-600" />
+                ) : myRtrStatus === 'pending' ? (
+                  <Clock className="size-10 text-amber-500" />
+                ) : myRtrStatus === 'failed' ? (
+                  <XCircle className="size-10 text-red-500" />
+                ) : myRtrStatus === 'expired' ? (
+                  <AlertTriangle className="size-10 text-gray-500" />
+                ) : (
+                  <FileText className="size-10 text-slate-400" />
+                )}
+              </motion.div>
+              <Badge
+                className="text-base px-6 py-2 font-semibold"
+                style={{ backgroundColor: currentStatus.bg, color: currentStatus.color, borderColor: 'transparent' }}
+              >
+                {currentStatus.label}
+              </Badge>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                {currentStatus.description}
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Details Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Certificate Details */}
+              <Card className="border shadow-none">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Award className="size-4 text-teal-600" />
+                    Certificate Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Token</span>
+                    <span className="font-mono text-xs">
+                      {details.certificateToken || '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Issued</span>
+                    <span>{details.issuedAt ? formatDate(details.issuedAt) : '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Expires</span>
+                    <span className={myRtrStatus === 'expired' ? 'text-red-500 font-medium' : ''}>
+                      {details.expiresAt ? formatDate(details.expiresAt) : '—'}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Monitoring & Reference */}
+              <Card className="border shadow-none">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Bell className="size-4 text-teal-600" />
+                    Expiry Monitoring
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">HO Reference</span>
+                    <span className="font-mono text-xs">{details.homeOfficeRef || '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Monitoring</span>
+                    <Badge
+                      className="text-xs"
+                      style={{
+                        backgroundColor: details.monitoringActive ? '#ecfdf5' : '#f1f5f9',
+                        color: details.monitoringActive ? '#10b981' : '#94a3b8',
+                        borderColor: 'transparent',
+                      }}
+                    >
+                      {details.monitoringActive ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Status</span>
+                    <StatusBadge status={myRtrStatus} />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Regulatory Note */}
+            <div className="p-4 rounded-lg bg-teal-50 border border-teal-100 space-y-2">
+              <div className="flex items-center gap-2 text-teal-800">
+                <Shield className="size-4" />
+                <p className="text-sm font-medium">Regulatory Reference</p>
+              </div>
+              <p className="text-xs text-teal-700 leading-relaxed">
+                Under the Immigration Act 2014, landlords must verify that all tenants aged 18+ have the right to rent
+                in the UK. PropComply automates this check through Home Office integration. Non-compliance can result
+                in civil penalties of up to &pound;3,000 per tenant.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* What Happens Next */}
+      <motion.div variants={fadeInUp}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <ArrowRight className="size-4 text-teal-600" />
+              What Happens Next
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {myRtrStatus === 'verified' ? (
+                <>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                    <CheckCircle2 className="size-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800">Continuous Monitoring</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">Your status is monitored 24/7 for changes</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                    <Bell className="size-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800">Expiry Alerts</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">You&apos;ll be notified 90, 30, and 7 days before expiry</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+                    <RefreshCw className="size-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800">Auto-Renewal</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">Repeat checks are triggered automatically as required</p>
+                    </div>
+                  </div>
+                </>
+              ) : myRtrStatus === 'pending' ? (
+                <>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                    <FileText className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Document Review</p>
+                      <p className="text-xs text-amber-700 mt-0.5">Your documents are being processed and validated</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                    <ShieldCheck className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Home Office Check</p>
+                      <p className="text-xs text-amber-700 mt-0.5">Verification against Home Office immigration records</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                    <Award className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-amber-800">Certificate Issuance</p>
+                      <p className="text-xs text-amber-700 mt-0.5">You&apos;ll receive your RTR certificate upon successful verification</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <Upload className="size-5 text-gray-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Upload Documents</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Complete onboarding to submit your identity documents</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <ShieldCheck className="size-5 text-gray-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Verification</p>
+                      <p className="text-xs text-gray-500 mt-0.5">PropComply will verify your documents automatically</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <Award className="size-5 text-gray-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Get Certified</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Receive your Right to Rent certificate</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ===================== MAIN COMPONENT =====================
+
+export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenceProps = {}) {
   const { data: session } = useSession();
+  const userRole = session?.user?.role;
+  const isTenant = userRole === 'tenant';
+
   const { data, isLoading, error } = useApi<PropertiesResponse>(
     'properties',
     '/api/properties',
@@ -240,6 +1143,48 @@ export default function PropertyIntelligence() {
     );
   }
 
+  // ===================== TENANT VIEW =====================
+  if (isTenant) {
+    return (
+      <motion.div
+        className="space-y-6 p-4 md:p-6"
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+      >
+        <Tabs defaultValue="my-application" className="w-full">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="my-application" className="gap-2">
+              <Building2 className="size-4" />
+              My Application
+            </TabsTrigger>
+            <TabsTrigger value="right-to-rent" className="gap-2">
+              <ShieldCheck className="size-4" />
+              Right to Rent
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="my-application" className="mt-6">
+            <TenantPropertyView
+              properties={properties}
+              allApplications={allApplications}
+              sessionEmail={session?.user?.email || ''}
+              onNavigate={onNavigate}
+            />
+          </TabsContent>
+
+          <TabsContent value="right-to-rent" className="mt-6">
+            <TenantRightToRentSummary
+              allApplications={allApplications}
+              sessionEmail={session?.user?.email || ''}
+            />
+          </TabsContent>
+        </Tabs>
+      </motion.div>
+    );
+  }
+
+  // ===================== NON-TENANT (ADMIN/STAFF) VIEW =====================
   return (
     <motion.div
       className="space-y-6 p-4 md:p-6"
@@ -519,7 +1464,7 @@ export default function PropertyIntelligence() {
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Under the Immigration Act 2014, landlords must verify that all tenants aged 18+ have
                   the right to rent in the UK. Non-compliance can result in civil penalties of up to
-                  £3,000 per tenant. PropComply automates this check through Home Office integration.
+                  &pound;3,000 per tenant. PropComply automates this check through Home Office integration.
                 </p>
               </div>
               <div className="flex items-center gap-2 p-2 rounded-md bg-teal-50 text-teal-700 text-xs">

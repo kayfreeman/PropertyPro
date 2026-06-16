@@ -996,3 +996,133 @@ Stage Summary:
 - Multi-column footer with regulatory compliance links
 - Responsive mobile layout works correctly
 - Sign out redirects to landing page
+
+---
+
+## Task 2: Public Landing Page Overhaul (Layout design.png match)
+**Agent**: landing-agent
+**Date**: 2026-06-17
+**Status**: ✅ Completed
+
+### Files Modified
+
+1. **`/home/z/my-project/src/components/platform/LandingPage.tsx`** — Complete rewrite to match the new `Layout design.png` reference. ~920 lines → ~920 lines, fully redesigned.
+
+### Design Implementation Summary
+
+The landing page was completely overhauled to match the new visual reference. The previous design (centered hero with shield/globe orb, statistics bar on navy background, single-column compliance-gap layout with embedded trust-ladder viz) was replaced with the new reference design.
+
+#### Color Palette Updated to Spec
+- Primary Navy: `#1E3A8A` (header CTA, footer, headings)
+- Teal accent: `#14B8A6` (logo, links, highlights)
+- Mint Green: `#10b981` (success/verified)
+- Red `#ef4444`, Orange `#f59e0b`, Blue `#3b82f6` (problem-card accents)
+- Background: White / `#F9FAFB` for alternating sections
+- Dark gray `#374151` for body text
+
+#### Sections Built
+
+1. **Sticky Navigation Bar** (white bg + subtle shadow)
+   - Logo: `/logo.png` + "PropComply AI" in teal + "+ VerifyMe Global" in smaller gray below
+   - Desktop items: Platform ▾, Trust Ladder, Solutions ▾, Resources ▾, Company ▾, Pricing (dropdowns use shadcn `DropdownMenu`)
+   - Right side: "Sign In" teal text link + "Get Started" navy button with arrow
+   - Mobile: hamburger with collapsible accordion dropdowns (uses local `openMobileDropdown` state)
+
+2. **Hero Section** — two-column layout (text left, globe right on `lg`; stacked on mobile with globe first)
+   - Green badge "The Trust Infrastructure Platform"
+   - Headline: "The **Trust Infrastructure** for Cross-Border Property" (teal + navy split)
+   - Subheadline: full text from spec (identity verification + compliance automation + risk intelligence + property compliance)
+   - CTAs: "Get Started" (navy + arrow) and "Book Demo" (white outline + clock icon)
+   - **HeroGlobe component**: 3D-style teal/mint radial-gradient sphere with lat/long grid lines, central white rounded card with `ShieldCheck` icon (navy), dark navy platform base with glowing teal ring, SVG world-map dot pattern (5 cluster points pseudo-randomly placed), animated network connection paths, 4 pulsing mint nodes with SMIL animations, outer atmospheric glow
+
+3. **Floating Badges** around the globe (Framer Motion entrance + infinite y-float):
+   - Identity Verified · L6 Certified (top-left)
+   - Risk Score · Low Risk (top-right)
+   - Right to Rent · Certified (bottom-left)
+   - Compliance · Passed (bottom-right)
+
+4. **Key Metrics Row** — 4 white cards: £10,000 (PoundSterling icon, "Max Right to Rent penalty per occupier"), 6 (TrendingUp, "Trust Ladder Levels"), 8 (Boxes, "Platform Modules"), 99.9% (Target, "Verification Accuracy") — all icons in teal
+
+5. **The Compliance Gap Section** — red "The Problem" badge + title + subtitle, 3 problem cards each with color-coded icon + tag badge:
+   - Identity Fraud (red UserX, "Rising")
+   - Compliance Burden (orange FileWarning, "£10,000")
+   - Trust Deficit (blue HelpCircle, "Zero")
+
+6. **Trust Infrastructure Section** — "New Category" badge + title + 3 feature cards (Identity Verified / Right to Rent Certified / Compliance Focused) with mint checkmarks
+
+7. **Platform Modules Section** — 2×4 grid of 8 module cards with colored icons (Identity & Trust, Compliance Automation, Risk Intelligence, Property Intelligence, Right to Rent, Partner Ecosystem, AI Assistant, Workflow Engine), hover scale animation
+
+8. **How It Works Section** — 3-step flow (Verify Identity / Build Trust Profile / Access Properties) with teal connecting line on desktop, numbered badges
+
+9. **Pricing Section** — 3 tiers (Starter £99/mo, Professional £299/mo Popular with teal border + scale, Enterprise Custom) with feature lists and CTAs
+
+10. **Regulatory Compliance Section** — 4 badges (UK GDPR, UK MLR 2017, FCA Guidance, Immigration Act 2014)
+
+11. **CTA Footer** (navy #1E3A8A) — "Ready to Transform Cross-Border Property Compliance?" + white "Get Started Today" button (navy text) + separator + copyright "© 2025 PropComply AI + VerifyMe Global. All rights reserved." + Privacy Policy / Terms of Service / Contact links
+
+#### Login Modal (preserved from prior implementation, restyled to new palette)
+- Email + password inputs with `Mail` / `Lock` icons
+- Show/hide password toggle (Eye / EyeOff)
+- Loading state with spinner
+- Error display (red box, animated)
+- Demo-account quick-select expandable panel using `DEMO_ACCOUNTS` array — each row shows role icon, role name, email, level badge, all colored by `ROLE_DEFINITIONS[role]`
+- "Sign In" CTA uses `signIn('credentials', { email, password, redirect: false })` from `next-auth/react`
+- Closes on success
+
+### Technical Implementation
+- `'use client'` directive at top
+- Framer Motion `useInView` + custom `AnimatedSection` and `StaggerChild` wrappers for scroll-triggered reveals
+- `HeroGlobe` subcomponent uses `useMemo` for deterministic dot cluster generation (seeded RNG)
+- SVG world-map with `<animate>` SMIL pulses for network nodes (no JS animation cost)
+- shadcn/ui components used: `Button`, `Input`, `Card`, `Badge`, `Separator`, `Dialog`, `DropdownMenu`
+- Lucide icons: ~45 distinct icons imported and verified to exist
+- `ROLE_DEFINITIONS` and `UserRole` imported from `@/lib/rbac` for demo-account metadata
+- Fully responsive: mobile-first with `sm:`, `lg:` breakpoints; hamburger menu on `<lg`
+- Sticky footer via `mt-auto` on the navy CTA section (root wrapper is `min-h-screen flex flex-col`)
+- Logo referenced as `/logo.png` (img tag)
+
+### Verification
+- `bun run lint` → 0 errors (only 1 pre-existing warning in `src/app/api/identities/route.ts`, unrelated)
+- Dev server compiles cleanly (`✓ Compiled in 219ms` after edit)
+- `GET / 200` with 212ms render — no runtime errors in `dev.log`
+
+---
+Task ID: 3
+Agent: dashboard-layout-overhaul-agent
+Task: Overhaul dashboard layout in src/app/page.tsx to match Inner Design.png reference
+
+Work Log:
+- Replaced color palette: navy #002E5D → deep navy #0F172A; teal #00A79D → emerald #10B981; main content bg → light gray #F9FAFB
+- Expanded sidebar navigation from 8 items to 12 items, all mapping to existing 8 sections:
+  - Dashboard → dashboard
+  - Applicants, Verifications, Trust Ladder → identity
+  - Compliance, Reports → compliance
+  - Risk Intelligence → risk
+  - Right to Rent, Property Intelligence → property
+  - Partners → partners
+  - AI Assistant → ai-assistant
+  - Settings → settings
+- Added `activeNavId` state to track which nav item is active (independent of `activeSection`), with `handleNavClick()` and updated `handleSectionChange()` to sync both states
+- Sidebar (desktop + mobile): deep navy #0F172A bg, inverted white logo, teal #10B981 active states with shadow, white/70 inactive text
+- Added "Need Help?" section at bottom of sidebar with HelpCircle icon, subtitle, and full-width teal "Open Assistant" button → navigates to ai-assistant section
+- User profile (avatar + name + role) at very bottom of sidebar
+- Removed old sidebar collapse feature (design shows fixed 256px sidebar)
+- Header: white background, h-16, breadcrumb on left ("Dashboard > [Active Nav Label]"), search bar in center ("Search anything..." placeholder), notification bell + user menu dropdown + "Download Report" (outline) + "Share Credential" (teal) buttons on right
+- Section header: light gray #F9FAFB bg, teal left border accent (border-l-4 border-[#10B981] pl-4), breadcrumb-style subtitle above title
+- Footer: navy #0F172A bg, inverted white logo, 4 columns (Brand, Regulatory Compliance, Platform, Legal), regulatory links (UK GDPR, UK MLR 2017, FCA Compliance, Immigration Act 2014), mt-auto for sticky-to-bottom
+- Mobile sidebar: same dark styling as desktop, slide-in animation, includes all 12 nav items + Need Help + user profile + Sign Out
+- Added imports: Users, TrendingUp, Landmark, FileBarChart, Download, Share2, HelpCircle
+- Removed imports: ChevronLeft (no longer used after removing collapse feature)
+- Kept ChevronRight for breadcrumb separators
+
+Files Modified:
+- /home/z/my-project/src/app/page.tsx (only file modified)
+
+Stage Summary:
+- Dashboard layout now matches Inner Design.png reference with deep navy sidebar, teal active states, white header with breadcrumb, light gray content area, and navy footer
+- All 12 navigation items functional and mapped to existing 8 sections
+- "Need Help?" + "Open Assistant" section added to sidebar bottom
+- All existing functionality preserved: role-based access, sign out, settings tabs, search navigation, child component onNavigate callbacks
+- bun run lint passes with 0 errors; dev server compiles successfully (GET / 200)
+- Footer sticky to bottom via mt-auto + min-h-screen flex flex-col
+- Component remains 'use client'; LandingPage import preserved for unauthenticated users

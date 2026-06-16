@@ -84,7 +84,7 @@
     84→  const { data: session, status } = useSession();
     85→  const [activeSection, setActiveSection] = useState<SectionId>('dashboard');
     86→  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    87→  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    87→  const obileMenuOpen, setMobileMenuOpen] = useState(false);
     88→  const [isSigningOut, setIsSigningOut] = useState(false);
     89→  const [settingsTab, setSettingsTab] = useState('profile');
     90→  const [searchQuery, setSearchQuery] = useState('');

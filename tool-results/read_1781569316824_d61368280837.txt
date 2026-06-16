@@ -1,0 +1,927 @@
+     1→'use client';
+     2→
+     3→import { useState, useRef } from 'react';
+     4→import { signIn } from 'next-auth/react';
+     5→import { motion, useInView } from 'framer-motion';
+     6→import {
+     7→  Shield,
+     8→  Eye,
+     9→  EyeOff,
+    10→  LogIn,
+    11→  ArrowRight,
+    12→  Lock,
+    13→  Mail,
+    14→  Building2,
+    15→  Users,
+    16→  AlertTriangle,
+    17→  ScanFace,
+    18→  Handshake,
+    19→  User,
+    20→  Crown,
+    21→  Puzzle,
+    22→  CheckCircle2,
+    23→  Globe,
+    24→  FileCheck,
+    25→  TrendingUp,
+    26→  Bot,
+    27→  Zap,
+    28→  Landmark,
+    29→  Scale,
+    30→  Fingerprint,
+    31→  Award,
+    32→  CreditCard,
+    33→  ChevronRight,
+    34→  Sparkles,
+    35→  Play,
+    36→  X,
+    37→} from 'lucide-react';
+    38→import { Button } from '@/components/ui/button';
+    39→import { Input } from '@/components/ui/input';
+    40→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+    41→import { Badge } from '@/components/ui/badge';
+    42→import { Separator } from '@/components/ui/separator';
+    43→import {
+    44→  Dialog,
+    45→  DialogContent,
+    46→  DialogDescription,
+    47→  DialogHeader,
+    48→  DialogTitle,
+    49→} from '@/components/ui/dialog';
+    50→import { ROLE_DEFINITIONS, type UserRole } from '@/lib/rbac';
+    51→
+    52→interface LoginPageProps {
+    53→  error?: string;
+    54→}
+    55→
+    56→const DEMO_ACCOUNTS: { role: UserRole; email: string; password: string }[] = [
+    57→  { role: 'platform_admin', email: 'admin@propcomply.ai', password: 'Admin@2024' },
+    58→  { role: 'compliance_officer', email: 'compliance@propcomply.ai', password: 'Compliance@2024' },
+    59→  { role: 'property_manager', email: 'property@propcomply.ai', password: 'Property@2024' },
+    60→  { role: 'identity_verifier', email: 'identity@propcomply.ai', password: 'Identity@2024' },
+    61→  { role: 'risk_analyst', email: 'risk@propcomply.ai', password: 'Risk@2024' },
+    62→  { role: 'partner_integration_manager', email: 'partner-mgr@propcomply.ai', password: 'PartnerMgr@2024' },
+    63→  { role: 'partner_user', email: 'partner@barclays.ai', password: 'Partner@2024' },
+    64→  { role: 'tenant', email: 'tenant@example.com', password: 'Tenant@2024' },
+    65→];
+    66→
+    67→const ROLE_ICONS: Record<string, React.ReactNode> = {
+    68→  platform_admin: <Crown className="size-4" />,
+    69→  compliance_officer: <Shield className="size-4" />,
+    70→  property_manager: <Building2 className="size-4" />,
+    71→  identity_verifier: <ScanFace className="size-4" />,
+    72→  risk_analyst: <AlertTriangle className="size-4" />,
+    73→  partner_integration_manager: <Puzzle className="size-4" />,
+    74→  partner_user: <Handshake className="size-4" />,
+    75→  tenant: <User className="size-4" />,
+    76→};
+    77→
+    78→// ─── Animation helpers ───────────────────────────────────────────────
+    79→function AnimatedSection({ children, className = '', delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+    80→  const ref = useRef(null);
+    81→  const isInView = useInView(ref, { once: true, margin: '-60px' });
+    82→  return (
+    83→    <motion.div
+    84→      ref={ref}
+    85→      initial={{ opacity: 0, y: 40 }}
+    86→      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 40 }}
+    87→      transition={{ duration: 0.6, delay, ease: 'easeOut' }}
+    88→      className={className}
+    89→    >
+    90→      {children}
+    91→    </motion.div>
+    92→  );
+    93→}
+    94→
+    95→function StaggerChild({ children, index }: { children: React.ReactNode; index: number }) {
+    96→  const ref = useRef(null);
+    97→  const isInView = useInView(ref, { once: true, margin: '-30px' });
+    98→  return (
+    99→    <motion.div
+   100→      ref={ref}
+   101→      initial={{ opacity: 0, y: 30 }}
+   102→      animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
+   103→      transition={{ duration: 0.5, delay: index * 0.1, ease: 'easeOut' }}
+   104→    >
+   105→      {children}
+   106→    </motion.div>
+   107→  );
+   108→}
+   109→
+   110→// ─── Login Modal Component ───────────────────────────────────────────
+   111→function LoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+   112→  const [email, setEmail] = useState('');
+   113→  const [password, setPassword] = useState('');
+   114→  const [showPassword, setShowPassword] = useState(false);
+   115→  const [isLoading, setIsLoading] = useState(false);
+   116→  const [loginError, setLoginError] = useState('');
+   117→  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
+   118→
+   119→  const handleLogin = async (e: React.FormEvent) => {
+   120→    e.preventDefault();
+   121→    setIsLoading(true);
+   122→    setLoginError('');
+   123→    try {
+   124→      const result = await signIn('credentials', { email, password, redirect: false });
+   125→      if (result?.error) {
+   126→        setLoginError(result.error);
+   127→      } else if (result?.ok) {
+   128→        onOpenChange(false);
+   129→      }
+   130→    } catch {
+   131→      setLoginError('An unexpected error occurred. Please try again.');
+   132→    } finally {
+   133→      setIsLoading(false);
+   134→    }
+   135→  };
+   136→
+   137→  const handleQuickLogin = async (account: typeof DEMO_ACCOUNTS[0]) => {
+   138→    setIsLoading(true);
+   139→    setLoginError('');
+   140→    try {
+   141→      const result = await signIn('credentials', { email: account.email, password: account.password, redirect: false });
+   142→      if (result?.error) {
+   143→        setLoginError(result.error);
+   144→      } else if (result?.ok) {
+   145→        onOpenChange(false);
+   146→      }
+   147→    } catch {
+   148→      setLoginError('An unexpected error occurred. Please try again.');
+   149→    } finally {
+   150→      setIsLoading(false);
+   151→    }
+   152→  };
+   153→
+   154→  return (
+   155→    <Dialog open={open} onOpenChange={onOpenChange}>
+   156→      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+   157→        <DialogHeader>
+   158→          <div className="flex items-center gap-2">
+   159→            <Lock className="size-5 text-teal-600" />
+   160→            <DialogTitle className="text-xl">Sign In</DialogTitle>
+   161→          </div>
+   162→          <DialogDescription>
+   163→            Access the PropComply AI Trust Infrastructure Platform
+   164→          </DialogDescription>
+   165→        </DialogHeader>
+   166→
+   167→        <form onSubmit={handleLogin} className="space-y-4">
+   168→          <div className="space-y-2">
+   169→            <label className="text-sm font-medium" htmlFor="modal-email">Email Address</label>
+   170→            <div className="relative">
+   171→              <Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   172→              <Input id="modal-email" type="email" placeholder="your@email.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-9 h-11" required autoComplete="email" />
+   173→            </div>
+   174→          </div>
+   175→          <div className="space-y-2">
+   176→            <label className="text-sm font-medium" htmlFor="modal-password">Password</label>
+   177→            <div className="relative">
+   178→              <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   179→              <Input id="modal-password" type={showPassword ? 'text' : 'password'} placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-9 pr-10 h-11" required autoComplete="current-password" />
+   180→              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+   181→                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+   182→              </button>
+   183→            </div>
+   184→          </div>
+   185→          {loginError && (
+   186→            <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+   187→              {loginError}
+   188→            </motion.div>
+   189→          )}
+   190→          <Button type="submit" className="w-full h-11 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md" disabled={isLoading}>
+   191→            {isLoading ? (
+   192→              <div className="flex items-center gap-2"><div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Signing in...</div>
+   193→            ) : (
+   194→              <div className="flex items-center gap-2"><LogIn className="size-4" />Sign In</div>
+   195→            )}
+   196→          </Button>
+   197→        </form>
+   198→
+   199→        <div className="text-center">
+   200→          <p className="text-xs text-muted-foreground mb-3">Protected by enterprise-grade security · Zero Trust Architecture</p>
+   201→          <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700" onClick={() => setShowDemoAccounts(!showDemoAccounts)}>
+   202→            {showDemoAccounts ? 'Hide' : 'Show'} Demo Accounts
+   203→            <ChevronRight className={`size-4 ml-1 transition-transform ${showDemoAccounts ? 'rotate-90' : ''}`} />
+   204→          </Button>
+   205→        </div>
+   206→
+   207→        {showDemoAccounts && (
+   208→          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2 max-h-64 overflow-y-auto">
+   209→            <Separator />
+   210→            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-1">Quick Access Demo Accounts</p>
+   211→            {DEMO_ACCOUNTS.map((account) => {
+   212→              const roleDef = ROLE_DEFINITIONS[account.role];
+   213→              return (
+   214→                <button key={account.role} onClick={() => handleQuickLogin(account)} disabled={isLoading} className="w-full flex items-center gap-3 p-2.5 rounded-lg border bg-white hover:bg-slate-50 hover:border-teal-300 transition-all duration-200 group text-left">
+   215→                  <div className="flex size-8 items-center justify-center rounded-lg shrink-0" style={{ backgroundColor: roleDef.bgColor, color: roleDef.color }}>
+   216→                    {ROLE_ICONS[account.role]}
+   217→                  </div>
+   218→                  <div className="flex-1 min-w-0">
+   219→                    <div className="text-xs font-semibold truncate">{roleDef.name}</div>
+   220→                    <div className="text-[10px] text-muted-foreground truncate">{account.email}</div>
+   221→                  </div>
+   222→                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 shrink-0" style={{ borderColor: roleDef.color + '40', color: roleDef.color, backgroundColor: roleDef.bgColor }}>
+   223→                    Lvl {roleDef.level}
+   224→                  </Badge>
+   225→                </button>
+   226→              );
+   227→            })}
+   228→          </motion.div>
+   229→        )}
+   230→      </DialogContent>
+   231→    </Dialog>
+   232→  );
+   233→}
+   234→
+   235→// ─── Data ────────────────────────────────────────────────────────────
+   236→const PLATFORM_MODULES = [
+   237→  { icon: <Fingerprint className="size-6" />, title: 'Identity & Trust', desc: '6-level Trust Ladder with progressive identity assurance from registration to certified credentials', color: 'from-emerald-500 to-teal-600', bgColor: 'bg-emerald-50', textColor: 'text-emerald-700' },
+   238→  { icon: <FileCheck className="size-6" />, title: 'Compliance Automation', desc: 'AML/KYC/CDD/EDD workflows with automated screening and regulatory compliance monitoring', color: 'from-cyan-500 to-blue-600', bgColor: 'bg-cyan-50', textColor: 'text-cyan-700' },
+   239→  { icon: <TrendingUp className="size-6" />, title: 'Risk Intelligence', desc: 'ML-powered risk scoring, fraud detection, and explainable AI analytics with confidence metrics', color: 'from-amber-500 to-orange-600', bgColor: 'bg-amber-50', textColor: 'text-amber-700' },
+   240→  { icon: <Building2 className="size-6" />, title: 'Property Intelligence', desc: 'Right to Rent verification, guarantor replacement, and property compliance intelligence', color: 'from-violet-500 to-purple-600', bgColor: 'bg-violet-50', textColor: 'text-violet-700' },
+   241→  { icon: <Handshake className="size-6" />, title: 'Partner Ecosystem', desc: 'Banking referrals, insurance partnerships, and secure API integrations with partner networks', color: 'from-pink-500 to-rose-600', bgColor: 'bg-pink-50', textColor: 'text-pink-700' },
+   242→  { icon: <Bot className="size-6" />, title: 'AI Compliance Assistant', desc: 'Regulatory guidance chatbot with knowledge of UK GDPR, MLR 2017, and Immigration Act 2014', color: 'from-teal-500 to-emerald-600', bgColor: 'bg-teal-50', textColor: 'text-teal-700' },
+   243→  { icon: <ScanFace className="size-6" />, title: 'VerifyMe Onboarding', desc: '10-step verification wizard with biometric checks, financial analysis, and credential issuance', color: 'from-sky-500 to-cyan-600', bgColor: 'bg-sky-50', textColor: 'text-sky-700' },
+   244→  { icon: <Shield className="size-6" />, title: 'Right to Rent Flow', desc: 'Immigration Act 2014 Section 22 compliant verification with automated status checks', color: 'from-emerald-600 to-green-700', bgColor: 'bg-green-50', textColor: 'text-green-700' },
+   245→];
+   246→
+   247→const TRUST_LEVELS = [
+   248→  { level: 1, name: 'Registered', desc: 'Email + MFA verification', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', bar: 'bg-emerald-200' },
+   249→  { level: 2, name: 'Documented', desc: 'Passport/ID upload & validation', color: 'bg-emerald-200 text-emerald-900 border-emerald-300', bar: 'bg-emerald-300' },
+   250→  { level: 3, name: 'Behavioural Verified', desc: 'Biometrics + financial behaviour', color: 'bg-emerald-300 text-emerald-900 border-emerald-400', bar: 'bg-emerald-400' },
+   251→  { level: 4, name: 'Jurisdictional', desc: 'Cross-border database checks', color: 'bg-emerald-400 text-white border-emerald-500', bar: 'bg-emerald-500' },
+   252→  { level: 5, name: 'Corroborated', desc: 'Triple-source fusion analysis', color: 'bg-emerald-500 text-white border-emerald-600', bar: 'bg-emerald-600' },
+   253→  { level: 6, name: 'Certified', desc: 'Credential issuance + agent review', color: 'bg-emerald-700 text-white border-emerald-800', bar: 'bg-emerald-700' },
+   254→];
+   255→
+   256→const USER_ROLES = [
+   257→  { icon: <User className="size-6" />, title: 'Tenants / Applicants', desc: 'Self-service portal for document upload, consent management, and application tracking', color: 'bg-emerald-50 text-emerald-600' },
+   258→  { icon: <Building2 className="size-6" />, title: 'Property Managers / Letting Agents', desc: 'Property compliance, tenant screening, and Right to Rent verification', color: 'bg-violet-50 text-violet-600' },
+   259→  { icon: <Shield className="size-6" />, title: 'Compliance Officers', desc: 'AML/KYC/CDD compliance workflows, screening reviews, and regulatory adherence', color: 'bg-cyan-50 text-cyan-600' },
+   260→  { icon: <ScanFace className="size-6" />, title: 'Identity Verification Specialists', desc: 'Verification workflows, credential management, and processing requests', color: 'bg-sky-50 text-sky-600' },
+   261→  { icon: <TrendingUp className="size-6" />, title: 'Risk Analysts', desc: 'Risk scoring, fraud investigation, and intelligence reports with explainability', color: 'bg-amber-50 text-amber-600' },
+   262→  { icon: <Handshake className="size-6" />, title: 'Partner Organizations', desc: 'Banking, insurance, and service partner integrations with referral workflows', color: 'bg-pink-50 text-pink-600' },
+   263→];
+   264→
+   265→const HOW_IT_WORKS = [
+   266→  { step: 1, title: 'Register & Upload Documents', desc: 'Create your account, enable MFA, and upload identity documents (passport, visa, financial records)', icon: <User className="size-6" /> },
+   267→  { step: 2, title: 'Biometric Verification & Financial Analysis', desc: 'Complete liveness detection, face matching, and open banking financial behaviour analysis', icon: <ScanFace className="size-6" /> },
+   268→  { step: 3, title: 'Cross-Jurisdictional Checks & Risk Assessment', desc: 'Automated screening across sanctions, PEP, adverse media databases with ML risk scoring', icon: <Globe className="size-6" /> },
+   269→  { step: 4, title: 'Trust Credential Issued & Right to Rent Certified', desc: 'Receive your portable trust credential and Right to Rent certification valid across the UK', icon: <Award className="size-6" /> },
+   270→];
+   271→
+   272→const PRICING_TIERS = [
+   273→  {
+   274→    name: 'Starter',
+   275→    price: '£49',
+   276→    period: '/mo',
+   277→    desc: 'For individual tenants',
+   278→    features: ['Identity verification (L1-L3)', 'Right to Rent certification', 'Document upload & storage', 'Self-service portal', 'AI compliance chatbot', 'Guarantor replacement eligible'],
+   279→    cta: 'Get Started',
+   280→    popular: false,
+   281→    color: 'border-slate-200',
+   282→    buttonClass: 'bg-white border-2 border-emerald-600 text-emerald-600 hover:bg-emerald-50',
+   283→  },
+   284→  {
+   285→    name: 'Professional',
+   286→    price: '£199',
+   287→    period: '/mo',
+   288→    desc: 'For letting agents & property managers',
+   289→    features: ['Everything in Starter', 'Full Trust Ladder (L1-L6)', 'Compliance automation', 'Risk intelligence dashboard', 'Multi-property management', 'Partner referral network', 'Priority support', 'API access'],
+   290→    cta: 'Get Started',
+   291→    popular: true,
+   292→    color: 'border-emerald-500 ring-2 ring-emerald-500',
+   293→    buttonClass: 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700 shadow-lg',
+   294→  },
+   295→  {
+   296→    name: 'Enterprise',
+   297→    price: 'Custom',
+   298→    period: '',
+   299→    desc: 'For large organizations & partners',
+   300→    features: ['Everything in Professional', 'Custom integration APIs', 'Dedicated account manager', 'SLA guarantees', 'White-label options', 'Custom compliance workflows', 'On-premise deployment', 'Unlimited verifications'],
+   301→    cta: 'Contact Sales',
+   302→    popular: false,
+   303→    color: 'border-slate-200',
+   304→    buttonClass: 'bg-white border-2 border-slate-300 text-slate-700 hover:bg-slate-50',
+   305→  },
+   306→];
+   307→
+   308→const REGULATORY_BADGES = [
+   309→  { name: 'UK GDPR', desc: 'General Data Protection Regulation compliance' },
+   310→  { name: 'UK MLR 2017', desc: 'Money Laundering Regulations 2017' },
+   311→  { name: 'FCA', desc: 'Financial Conduct Authority guidance' },
+   312→  { name: 'Immigration Act 2014', desc: 'Right to Rent Section 22 requirements' },
+   313→  { name: 'Data Protection Act 2018', desc: 'UK data protection framework' },
+   314→];
+   315→
+   316→// ─── Main Component ──────────────────────────────────────────────────
+   317→export default function LoginPage({ error: _error }: LoginPageProps) {
+   318→  const [loginOpen, setLoginOpen] = useState(false);
+   319→
+   320→  const scrollToSection = (id: string) => {
+   321→    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+   322→  };
+   323→
+   324→  return (
+   325→    <div className="min-h-screen flex flex-col bg-white">
+   326→      {/* Login Modal */}
+   327→      <LoginModal open={loginOpen} onOpenChange={setLoginOpen} />
+   328→
+   329→      {/* ─── Sticky Nav ─────────────────────────────────────────── */}
+   330→      <nav className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur-md">
+   331→        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+   332→          <div className="flex items-center gap-3">
+   333→            <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
+   334→              <Shield className="size-6 text-white" />
+   335→            </div>
+   336→            <div>
+   337→              <h1 className="text-lg font-bold tracking-tight">PropComply AI</h1>
+   338→              <p className="text-xs text-muted-foreground font-medium">VerifyMe Global</p>
+   339→            </div>
+   340→          </div>
+   341→          <div className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
+   342→            <button onClick={() => scrollToSection('problem')} className="hover:text-foreground transition-colors">Problem</button>
+   343→            <button onClick={() => scrollToSection('solution')} className="hover:text-foreground transition-colors">Solution</button>
+   344→            <button onClick={() => scrollToSection('modules')} className="hover:text-foreground transition-colors">Platform</button>
+   345→            <button onClick={() => scrollToSection('trust-ladder')} className="hover:text-foreground transition-colors">Trust Ladder</button>
+   346→            <button onClick={() => scrollToSection('pricing')} className="hover:text-foreground transition-colors">Pricing</button>
+   347→          </div>
+   348→          <div className="flex items-center gap-3">
+   349→            <Button variant="ghost" size="sm" onClick={() => setLoginOpen(true)} className="text-teal-600 hover:text-teal-700 hidden sm:flex">
+   350→              Sign In
+   351→            </Button>
+   352→            <Button size="sm" onClick={() => setLoginOpen(true)} className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md">
+   353→              Get Started <ArrowRight className="size-4 ml-1" />
+   354→            </Button>
+   355→          </div>
+   356→        </div>
+   357→      </nav>
+   358→
+   359→      {/* ─── 1. Hero Section ────────────────────────────────────── */}
+   360→      <section className="relative overflow-hidden bg-gradient-to-br from-slate-50 via-white to-teal-50/40">
+   361→        {/* Decorative background elements */}
+   362→        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+   363→          <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-emerald-100/40 blur-3xl" />
+   364→          <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-teal-100/30 blur-3xl" />
+   365→          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-emerald-50/20 blur-3xl" />
+   366→        </div>
+   367→
+   368→        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-20 sm:py-28 lg:py-36">
+   369→          <motion.div
+   370→            initial={{ opacity: 0, y: 30 }}
+   371→            animate={{ opacity: 1, y: 0 }}
+   372→            transition={{ duration: 0.7 }}
+   373→            className="text-center max-w-4xl mx-auto"
+   374→          >
+   375→            <Badge variant="outline" className="mb-6 border-emerald-300 text-emerald-700 bg-emerald-50/80 text-xs sm:text-sm px-3 py-1">
+   376→              <Sparkles className="size-3.5 mr-1.5" />
+   377→              The Trust Infrastructure Platform
+   378→            </Badge>
+   379→
+   380→            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.1]">
+   381→              The Trust Infrastructure{' '}
+   382→              <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+   383→                for Cross-Border Property
+   384→              </span>
+   385→            </h1>
+   386→
+   387→            <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+   388→              PropComply AI + VerifyMe Global — The first platform combining identity verification,
+   389→              compliance automation, risk intelligence, and property compliance into a single trust
+   390→              infrastructure
+   391→            </p>
+   392→
+   393→            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+   394→              <Button size="lg" onClick={() => setLoginOpen(true)} className="h-12 px-8 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg text-base">
+   395→                Get Started <ArrowRight className="size-5 ml-2" />
+   396→              </Button>
+   397→              <Button size="lg" variant="outline" onClick={() => scrollToSection('how-it-works')} className="h-12 px-8 border-slate-300 text-base">
+   398→                <Play className="size-4 mr-2" /> Watch Demo
+   399→              </Button>
+   400→            </div>
+   401→
+   402→            {/* Key Stats */}
+   403→            <motion.div
+   404→              initial={{ opacity: 0, y: 20 }}
+   405→              animate={{ opacity: 1, y: 0 }}
+   406→              transition={{ duration: 0.7, delay: 0.3 }}
+   407→              className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-12 max-w-2xl mx-auto"
+   408→            >
+   409→              {[
+   410→                { value: '£2.8B', label: 'Problem size in UK property', icon: <AlertTriangle className="size-5 text-red-500" /> },
+   411→                { value: '94%', label: 'Faster verification', icon: <Zap className="size-5 text-amber-500" /> },
+   412→                { value: '300+', label: 'Jurisdictions covered', icon: <Globe className="size-5 text-emerald-500" /> },
+   413→              ].map((stat) => (
+   414→                <div key={stat.label} className="text-center">
+   415→                  <div className="flex items-center justify-center gap-2 mb-1">
+   416→                    {stat.icon}
+   417→                    <span className="text-3xl sm:text-4xl font-extrabold text-slate-900">{stat.value}</span>
+   418→                  </div>
+   419→                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+   420→                </div>
+   421→              ))}
+   422→            </motion.div>
+   423→          </motion.div>
+   424→        </div>
+   425→      </section>
+   426→
+   427→      {/* ─── 2. The Problem ─────────────────────────────────────── */}
+   428→      <section id="problem" className="py-20 sm:py-28 bg-white">
+   429→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   430→          <AnimatedSection>
+   431→            <div className="text-center mb-16">
+   432→              <Badge variant="outline" className="mb-4 border-red-300 text-red-700 bg-red-50 text-xs">
+   433→                The Problem
+   434→              </Badge>
+   435→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   436→                The £2.8B Problem Nobody Solves
+   437→              </h2>
+   438→              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+   439→                Cross-border property transactions are plagued by fraud, compliance failures, and a fundamental lack of trust infrastructure
+   440→              </p>
+   441→            </div>
+   442→          </AnimatedSection>
+   443→
+   444→          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+   445→            {[
+   446→              { icon: <AlertTriangle className="size-8" />, title: 'Identity Fraud', stat: '£1.3B', desc: 'Annual losses in UK property from identity fraud — growing 24% year-over-year with no unified defence', gradient: 'from-red-500 to-orange-500', bgGrad: 'from-red-50 to-orange-50', border: 'border-red-200' },
+   447→              { icon: <FileCheck className="size-8" />, title: 'Compliance Burden', stat: '94%', desc: 'Of letting agents struggle with Right to Rent compliance — exposing them to £3,000 per tenant civil penalties', gradient: 'from-orange-500 to-amber-500', bgGrad: 'from-orange-50 to-amber-50', border: 'border-orange-200' },
+   448→              { icon: <X className="size-8" />, title: 'Trust Deficit', stat: 'Zero', desc: 'No cross-border trust framework exists — leaving international tenants trapped in a cycle of rejection and re-verification', gradient: 'from-red-600 to-red-500', bgGrad: 'from-red-50 to-rose-50', border: 'border-red-200' },
+   449→            ].map((item, i) => (
+   450→              <StaggerChild key={item.title} index={i}>
+   451→                <Card className={`relative overflow-hidden ${item.border} hover:shadow-lg transition-shadow duration-300`}>
+   452→                  <div className={`absolute inset-0 bg-gradient-to-br ${item.bgGrad} opacity-60`} />
+   453→                  <CardHeader className="relative pb-2">
+   454→                    <div className={`inline-flex size-14 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient} text-white shadow-md mb-3`}>
+   455→                      {item.icon}
+   456→                    </div>
+   457→                    <CardTitle className="text-xl">{item.title}</CardTitle>
+   458→                  </CardHeader>
+   459→                  <CardContent className="relative">
+   460→                    <p className="text-4xl font-extrabold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent mb-3">{item.stat}</p>
+   461→                    <CardDescription className="text-sm leading-relaxed">{item.desc}</CardDescription>
+   462→                  </CardContent>
+   463→                </Card>
+   464→              </StaggerChild>
+   465→            ))}
+   466→          </div>
+   467→        </div>
+   468→      </section>
+   469→
+   470→      {/* ─── 3. The Solution ────────────────────────────────────── */}
+   471→      <section id="solution" className="py-20 sm:py-28 bg-gradient-to-br from-emerald-50/50 via-white to-teal-50/50">
+   472→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   473→          <AnimatedSection>
+   474→            <div className="text-center mb-16">
+   475→              <Badge variant="outline" className="mb-4 border-emerald-300 text-emerald-700 bg-emerald-50 text-xs">
+   476→                The Solution
+   477→              </Badge>
+   478→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   479→                A New Market Category: <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">Trust Infrastructure</span>
+   480→              </h2>
+   481→              <p className="mt-4 text-lg text-muted-foreground max-w-3xl mx-auto">
+   482→                VerifyMe Global creates the first unified trust infrastructure for cross-border property — combining identity verification, compliance automation, and risk intelligence into a single platform that transforms how trust is established, verified, and maintained.
+   483→              </p>
+   484→            </div>
+   485→          </AnimatedSection>
+   486→
+   487→          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
+   488→            {[
+   489→              { icon: <Fingerprint className="size-7" />, title: 'Identity Trust Ladder', desc: 'Progressive 6-level identity assurance framework that moves from basic registration to certified, portable credentials recognized across jurisdictions', gradient: 'from-emerald-500 to-teal-600', stat: '6 Levels' },
+   490→              { icon: <FileCheck className="size-7" />, title: 'Compliance Automation', desc: 'End-to-end AML/KYC/CDD/EDD workflows with automated screening against global sanctions, PEP, and adverse media databases', gradient: 'from-teal-500 to-cyan-600', stat: '8 Check Types' },
+   491→              { icon: <TrendingUp className="size-7" />, title: 'Risk Intelligence', desc: 'ML-powered risk scoring with explainable AI, fraud detection, and confidence metrics that provide transparent, auditable decisions', gradient: 'from-cyan-500 to-sky-600', stat: '99.7% Accuracy' },
+   492→            ].map((item, i) => (
+   493→              <StaggerChild key={item.title} index={i}>
+   494→                <Card className="border-0 shadow-lg hover:shadow-xl transition-shadow duration-300 overflow-hidden">
+   495→                  <div className={`h-2 bg-gradient-to-r ${item.gradient}`} />
+   496→                  <CardHeader className="pb-2">
+   497→                    <div className="flex items-center justify-between mb-2">
+   498→                      <div className={`inline-flex size-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient} text-white shadow-md`}>
+   499→                        {item.icon}
+   500→                      </div>
+   501→                      <Badge variant="outline" className="text-xs border-emerald-300 text-emerald-700 bg-emerald-50">{item.stat}</Badge>
+   502→                    </div>
+   503→                    <CardTitle className="text-xl">{item.title}</CardTitle>
+   504→                  </CardHeader>
+   505→                  <CardContent>
+   506→                    <CardDescription className="text-sm leading-relaxed">{item.desc}</CardDescription>
+   507→                  </CardContent>
+   508→                </Card>
+   509→              </StaggerChild>
+   510→            ))}
+   511→          </div>
+   512→        </div>
+   513→      </section>
+   514→
+   515→      {/* ─── 4. Platform Modules ────────────────────────────────── */}
+   516→      <section id="modules" className="py-20 sm:py-28 bg-white">
+   517→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   518→          <AnimatedSection>
+   519→            <div className="text-center mb-16">
+   520→              <Badge variant="outline" className="mb-4 border-teal-300 text-teal-700 bg-teal-50 text-xs">
+   521→                Platform
+   522→              </Badge>
+   523→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   524→                8 Core Platform Modules
+   525→              </h2>
+   526→              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+   527→                A comprehensive suite of integrated modules that work together to create end-to-end trust infrastructure
+   528→              </p>
+   529→            </div>
+   530→          </AnimatedSection>
+   531→
+   532→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+   533→            {PLATFORM_MODULES.map((mod, i) => (
+   534→              <StaggerChild key={mod.title} index={i}>
+   535→                <Card className="h-full hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-slate-200">
+   536→                  <CardHeader className="pb-3">
+   537→                    <div className={`inline-flex size-12 items-center justify-center rounded-xl ${mod.bgColor} ${mod.textColor} mb-2`}>
+   538→                      {mod.icon}
+   539→                    </div>
+   540→                    <CardTitle className="text-base">{mod.title}</CardTitle>
+   541→                  </CardHeader>
+   542→                  <CardContent>
+   543→                    <CardDescription className="text-xs leading-relaxed">{mod.desc}</CardDescription>
+   544→                  </CardContent>
+   545→                </Card>
+   546→              </StaggerChild>
+   547→            ))}
+   548→          </div>
+   549→        </div>
+   550→      </section>
+   551→
+   552→      {/* ─── 5. Trust Ladder ────────────────────────────────────── */}
+   553→      <section id="trust-ladder" className="py-20 sm:py-28 bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900 text-white relative overflow-hidden">
+   554→        <div className="absolute inset-0 pointer-events-none">
+   555→          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-emerald-700/20 blur-3xl" />
+   556→          <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full bg-teal-700/20 blur-3xl" />
+   557→        </div>
+   558→        <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
+   559→          <AnimatedSection>
+   560→            <div className="text-center mb-16">
+   561→              <Badge className="mb-4 bg-emerald-700/50 text-emerald-200 border-emerald-600 text-xs hover:bg-emerald-700/50">
+   562→                Identity Trust Ladder
+   563→              </Badge>
+   564→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+   565→                6-Level Progressive Trust Framework
+   566→              </h2>
+   567→              <p className="mt-4 text-lg text-emerald-200/80 max-w-2xl mx-auto">
+   568→                From basic registration to certified credentials — each level adds verification layers, increasing trust and unlocking new capabilities
+   569→              </p>
+   570→            </div>
+   571→          </AnimatedSection>
+   572→
+   573→          <div className="max-w-3xl mx-auto space-y-4">
+   574→            {TRUST_LEVELS.map((level, i) => (
+   575→              <StaggerChild key={level.level} index={i}>
+   576→                <div className={`flex items-center gap-4 sm:gap-6 p-4 sm:p-5 rounded-xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] ${level.color}`}>
+   577→                  <div className="flex size-12 sm:size-14 shrink-0 items-center justify-center rounded-full bg-white/20 font-extrabold text-lg sm:text-xl border border-white/30">
+   578→                    {level.level}
+   579→                  </div>
+   580→                  <div className="flex-1 min-w-0">
+   581→                    <div className="flex items-center gap-2 mb-0.5">
+   582→                      <span className="font-bold text-base sm:text-lg">L{level.level} — {level.name}</span>
+   583→                    </div>
+   584→                    <p className="text-sm opacity-80">{level.desc}</p>
+   585→                  </div>
+   586→                  <div className="hidden sm:flex items-center gap-2">
+   587→                    <div className="w-20 h-2 rounded-full bg-white/20 overflow-hidden">
+   588→                      <div className={`h-full rounded-full ${level.bar}`} style={{ width: `${(level.level / 6) * 100}%` }} />
+   589→                    </div>
+   590→                    <CheckCircle2 className="size-5 text-white/60" />
+   591→                  </div>
+   592→                </div>
+   593→              </StaggerChild>
+   594→            ))}
+   595→          </div>
+   596→        </div>
+   597→      </section>
+   598→
+   599→      {/* ─── 6. Who It's For ────────────────────────────────────── */}
+   600→      <section className="py-20 sm:py-28 bg-white">
+   601→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   602→          <AnimatedSection>
+   603→            <div className="text-center mb-16">
+   604→              <Badge variant="outline" className="mb-4 border-violet-300 text-violet-700 bg-violet-50 text-xs">
+   605→                Who It&apos;s For
+   606→              </Badge>
+   607→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   608→                Built for Every Stakeholder
+   609→              </h2>
+   610→              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+   611→                Role-based access tailored to the unique needs of each participant in the property trust chain
+   612→              </p>
+   613→            </div>
+   614→          </AnimatedSection>
+   615→
+   616→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+   617→            {USER_ROLES.map((role, i) => (
+   618→              <StaggerChild key={role.title} index={i}>
+   619→                <Card className="h-full hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+   620→                  <CardHeader className="pb-3">
+   621→                    <div className={`inline-flex size-12 items-center justify-center rounded-xl ${role.color} mb-2`}>
+   622→                      {role.icon}
+   623→                    </div>
+   624→                    <CardTitle className="text-base">{role.title}</CardTitle>
+   625→                  </CardHeader>
+   626→                  <CardContent>
+   627→                    <CardDescription className="text-xs leading-relaxed">{role.desc}</CardDescription>
+   628→                  </CardContent>
+   629→                </Card>
+   630→              </StaggerChild>
+   631→            ))}
+   632→          </div>
+   633→        </div>
+   634→      </section>
+   635→
+   636→      {/* ─── 7. How It Works ────────────────────────────────────── */}
+   637→      <section id="how-it-works" className="py-20 sm:py-28 bg-gradient-to-br from-slate-50 via-white to-teal-50/30">
+   638→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   639→          <AnimatedSection>
+   640→            <div className="text-center mb-16">
+   641→              <Badge variant="outline" className="mb-4 border-teal-300 text-teal-700 bg-teal-50 text-xs">
+   642→                How It Works
+   643→              </Badge>
+   644→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   645→                From Registration to Trust Credential
+   646→              </h2>
+   647→              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+   648→                A streamlined 4-step process that transforms an unknown applicant into a verified, trusted participant
+   649→              </p>
+   650→            </div>
+   651→          </AnimatedSection>
+   652→
+   653→          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+   654→            {HOW_IT_WORKS.map((step, i) => (
+   655→              <StaggerChild key={step.step} index={i}>
+   656→                <div className="relative">
+   657→                  <Card className="h-full border-slate-200 hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
+   658→                    <CardHeader className="pb-3">
+   659→                      <div className="flex items-center justify-between mb-2">
+   660→                        <div className="flex size-10 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-bold text-sm shadow-md">
+   661→                          {step.step}
+   662→                        </div>
+   663→                        <div className="text-emerald-600">{step.icon}</div>
+   664→                      </div>
+   665→                      <CardTitle className="text-base">{step.title}</CardTitle>
+   666→                    </CardHeader>
+   667→                    <CardContent>
+   668→                      <CardDescription className="text-xs leading-relaxed">{step.desc}</CardDescription>
+   669→                    </CardContent>
+   670→                  </Card>
+   671→                  {i < HOW_IT_WORKS.length - 1 && (
+   672→                    <div className="hidden lg:flex absolute top-1/2 -right-3 transform -translate-y-1/2 z-10">
+   673→                      <ArrowRight className="size-6 text-emerald-400" />
+   674→                    </div>
+   675→                  )}
+   676→                </div>
+   677→              </StaggerChild>
+   678→            ))}
+   679→          </div>
+   680→        </div>
+   681→      </section>
+   682→
+   683→      {/* ─── 8. Pricing ─────────────────────────────────────────── */}
+   684→      <section id="pricing" className="py-20 sm:py-28 bg-white">
+   685→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   686→          <AnimatedSection>
+   687→            <div className="text-center mb-16">
+   688→              <Badge variant="outline" className="mb-4 border-emerald-300 text-emerald-700 bg-emerald-50 text-xs">
+   689→                Pricing
+   690→              </Badge>
+   691→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   692→                Simple, Transparent Pricing
+   693→              </h2>
+   694→              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+   695→                Choose the plan that fits your needs. Scale as you grow.
+   696→              </p>
+   697→            </div>
+   698→          </AnimatedSection>
+   699→
+   700→          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto">
+   701→            {PRICING_TIERS.map((tier, i) => (
+   702→              <StaggerChild key={tier.name} index={i}>
+   703→                <Card className={`relative h-full ${tier.color} hover:shadow-xl transition-shadow duration-300`}>
+   704→                  {tier.popular && (
+   705→                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+   706→                      <Badge className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md border-0 text-xs px-3">
+   707→                        Most Popular
+   708→                      </Badge>
+   709→                    </div>
+   710→                  )}
+   711→                  <CardHeader className="pb-4">
+   712→                    <CardTitle className="text-xl">{tier.name}</CardTitle>
+   713→                    <CardDescription className="text-sm">{tier.desc}</CardDescription>
+   714→                    <div className="mt-3">
+   715→                      <span className="text-4xl font-extrabold text-slate-900">{tier.price}</span>
+   716→                      <span className="text-muted-foreground text-sm">{tier.period}</span>
+   717→                    </div>
+   718→                  </CardHeader>
+   719→                  <CardContent className="space-y-4">
+   720→                    <Separator />
+   721→                    <ul className="space-y-2.5">
+   722→                      {tier.features.map((f) => (
+   723→                        <li key={f} className="flex items-start gap-2 text-sm">
+   724→                          <CheckCircle2 className="size-4 text-emerald-500 shrink-0 mt-0.5" />
+   725→                          <span className="text-muted-foreground">{f}</span>
+   726→                        </li>
+   727→                      ))}
+   728→                    </ul>
+   729→                    <Button className={`w-full h-11 ${tier.buttonClass}`} onClick={() => setLoginOpen(true)}>
+   730→                      {tier.cta}
+   731→                    </Button>
+   732→                  </CardContent>
+   733→                </Card>
+   734→              </StaggerChild>
+   735→            ))}
+   736→          </div>
+   737→        </div>
+   738→      </section>
+   739→
+   740→      {/* ─── 9. Regulatory Compliance ───────────────────────────── */}
+   741→      <section className="py-16 sm:py-20 bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+   742→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   743→          <AnimatedSection>
+   744→            <div className="text-center mb-12">
+   745→              <Badge variant="outline" className="mb-4 border-slate-300 text-slate-600 bg-slate-50 text-xs">
+   746→                Compliance
+   747→              </Badge>
+   748→              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+   749→                Built on Regulatory Foundations
+   750→              </h2>
+   751→              <p className="mt-3 text-muted-foreground max-w-xl mx-auto">
+   752→                Full compliance with UK and international regulatory frameworks
+   753→              </p>
+   754→            </div>
+   755→          </AnimatedSection>
+   756→
+   757→          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+   758→            {REGULATORY_BADGES.map((badge, i) => (
+   759→              <StaggerChild key={badge.name} index={i}>
+   760→                <div className="group relative">
+   761→                  <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border bg-white shadow-sm hover:shadow-md transition-all duration-200 cursor-default">
+   762→                    <Landmark className="size-4 text-emerald-600" />
+   763→                    <Scale className="size-3.5 text-teal-600" />
+   764→                    <span className="text-sm font-semibold text-slate-700">{badge.name}</span>
+   765→                  </div>
+   766→                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-10">
+   767→                    {badge.desc}
+   768→                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900" />
+   769→                  </div>
+   770→                </div>
+   771→              </StaggerChild>
+   772→            ))}
+   773→          </div>
+   774→        </div>
+   775→      </section>
+   776→
+   777→      {/* ─── 10. About / Founder ────────────────────────────────── */}
+   778→      <section className="py-20 sm:py-28 bg-white">
+   779→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   780→          <AnimatedSection>
+   781→            <div className="max-w-3xl mx-auto text-center">
+   782→              <Badge variant="outline" className="mb-4 border-emerald-300 text-emerald-700 bg-emerald-50 text-xs">
+   783→                About
+   784→              </Badge>
+   785→              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+   786→                Founded by Joy Ladegbaye
+   787→              </h2>
+   788→              <div className="mt-8 flex justify-center">
+   789→                <div className="flex size-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg">
+   790→                  <span className="text-2xl font-bold text-white">JL</span>
+   791→                </div>
+   792→              </div>
+   793→              <p className="mt-6 text-lg text-muted-foreground leading-relaxed">
+   794→                Joy Ladegbaye founded PropComply AI + VerifyMe Global with a clear mission: to eliminate
+   795→                the trust deficit in cross-border property transactions. After experiencing firsthand the
+   796→                friction, rejections, and compliance failures that international tenants and property
+   797→                professionals face, Joy envisioned a new category of infrastructure — one that transforms
+   798→                how identity, compliance, and trust are established across jurisdictions.
+   799→              </p>
+   800→              <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+   801→                Under Joy&apos;s leadership, the platform has grown from a concept into a comprehensive trust
+   802→                infrastructure serving tenants, letting agents, compliance officers, and partner organizations
+   803→                — with the ambitious goal of becoming the global standard for property trust verification.
+   804→              </p>
+   805→              <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+   806→                <Badge variant="outline" className="text-xs border-emerald-300 text-emerald-700 bg-emerald-50">
+   807→                  <Sparkles className="size-3 mr-1" /> Visionary Leader
+   808→                </Badge>
+   809→                <Badge variant="outline" className="text-xs border-teal-300 text-teal-700 bg-teal-50">
+   810→                  <Globe className="size-3 mr-1" /> Cross-Border Expert
+   811→                </Badge>
+   812→                <Badge variant="outline" className="text-xs border-cyan-300 text-cyan-700 bg-cyan-50">
+   813→                  <Shield className="size-3 mr-1" /> Trust Infrastructure Pioneer
+   814→                </Badge>
+   815→              </div>
+   816→            </div>
+   817→          </AnimatedSection>
+   818→        </div>
+   819→      </section>
+   820→
+   821→      {/* ─── 11. Final CTA ──────────────────────────────────────── */}
+   822→      <section className="py-20 sm:py-28 bg-gradient-to-br from-emerald-600 via-teal-600 to-emerald-700 relative overflow-hidden">
+   823→        <div className="absolute inset-0 pointer-events-none">
+   824→          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-white/5 blur-3xl" />
+   825→          <div className="absolute bottom-0 left-0 w-80 h-80 rounded-full bg-teal-400/10 blur-3xl" />
+   826→        </div>
+   827→        <div className="relative max-w-4xl mx-auto px-4 sm:px-6 text-center">
+   828→          <AnimatedSection>
+   829→            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white leading-tight">
+   830→              Ready to Transform Cross-Border Property Compliance?
+   831→            </h2>
+   832→            <p className="mt-6 text-lg sm:text-xl text-emerald-100 max-w-2xl mx-auto">
+   833→              Join the platform that&apos;s building the future of trust in property — from identity verification to regulatory compliance, all in one place.
+   834→            </p>
+   835→            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+   836→              <Button size="lg" onClick={() => setLoginOpen(true)} className="h-12 px-8 bg-white text-emerald-700 hover:bg-emerald-50 shadow-lg text-base font-semibold">
+   837→                <LogIn className="size-4 mr-2" /> Sign In to Platform
+   838→              </Button>
+   839→              <Button size="lg" variant="outline" onClick={() => setLoginOpen(true)} className="h-12 px-8 border-white/40 text-white hover:bg-white/10 text-base">
+   840→                <Sparkles className="size-4 mr-2" /> Request Demo
+   841→              </Button>
+   842→            </div>
+   843→          </AnimatedSection>
+   844→        </div>
+   845→      </section>
+   846→
+   847→      {/* ─── 12. Footer ─────────────────────────────────────────── */}
+   848→      <footer className="bg-slate-900 text-slate-400 mt-auto">
+   849→        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+   850→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-12">
+   851→            {/* Brand */}
+   852→            <div className="col-span-2 sm:col-span-1">
+   853→              <div className="flex items-center gap-2.5 mb-4">
+   854→                <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-sm">
+   855→                  <Shield className="size-5 text-white" />
+   856→                </div>
+   857→                <div>
+   858→                  <p className="text-white font-bold text-sm">PropComply AI</p>
+   859→                  <p className="text-[10px] text-slate-500 font-medium">VerifyMe Global</p>
+   860→                </div>
+   861→              </div>
+   862→              <p className="text-xs text-slate-500 leading-relaxed">
+   863→                The trust infrastructure for cross-border property — identity verification, compliance automation, and risk intelligence.
+   864→              </p>
+   865→            </div>
+   866→
+   867→            {/* Platform */}
+   868→            <div>
+   869→              <p className="text-white font-semibold text-sm mb-3">Platform</p>
+   870→              <ul className="space-y-2 text-xs">
+   871→                <li><button onClick={() => scrollToSection('modules')} className="hover:text-white transition-colors">Modules</button></li>
+   872→                <li><button onClick={() => scrollToSection('trust-ladder')} className="hover:text-white transition-colors">Trust Ladder</button></li>
+   873→                <li><button onClick={() => scrollToSection('how-it-works')} className="hover:text-white transition-colors">How It Works</button></li>
+   874→                <li><button onClick={() => setLoginOpen(true)} className="hover:text-white transition-colors">Sign In</button></li>
+   875→              </ul>
+   876→            </div>
+   877→
+   878→            {/* Solutions */}
+   879→            <div>
+   880→              <p className="text-white font-semibold text-sm mb-3">Solutions</p>
+   881→              <ul className="space-y-2 text-xs">
+   882→                <li><span className="hover:text-white transition-colors cursor-default">Identity Verification</span></li>
+   883→                <li><span className="hover:text-white transition-colors cursor-default">Compliance Automation</span></li>
+   884→                <li><span className="hover:text-white transition-colors cursor-default">Risk Intelligence</span></li>
+   885→                <li><span className="hover:text-white transition-colors cursor-default">Right to Rent</span></li>
+   886→              </ul>
+   887→            </div>
+   888→
+   889→            {/* Company */}
+   890→            <div>
+   891→              <p className="text-white font-semibold text-sm mb-3">Company</p>
+   892→              <ul className="space-y-2 text-xs">
+   893→                <li><span className="hover:text-white transition-colors cursor-default">About</span></li>
+   894→                <li><button onClick={() => scrollToSection('pricing')} className="hover:text-white transition-colors">Pricing</button></li>
+   895→                <li><span className="hover:text-white transition-colors cursor-default">Resources</span></li>
+   896→                <li><span className="hover:text-white transition-colors cursor-default">Contact</span></li>
+   897→              </ul>
+   898→            </div>
+   899→          </div>
+   900→
+   901→          <Separator className="bg-slate-800 mb-8" />
+   902→
+   903→          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+   904→            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs">
+   905→              <span>&copy; 2024 PropComply AI + VerifyMe Global. All rights reserved.</span>
+   906→              <div className="flex items-center gap-3 text-slate-500">
+   907→                <span className="hover:text-white transition-colors cursor-default">Privacy Policy</span>
+   908→                <span>·</span>
+   909→                <span className="hover:text-white transition-colors cursor-default">Terms of Service</span>
+   910→              </div>
+   911→            </div>
+   912→
+   913→            {/* Compliance Badges */}
+   914→            <div className="flex items-center gap-2 flex-wrap justify-center">
+   915→              {REGULATORY_BADGES.map((badge) => (
+   916→                <Badge key={badge.name} variant="outline" className="text-[9px] border-slate-700 text-slate-500 bg-slate-800/50 px-1.5 py-0">
+   917→                  {badge.name}
+   918→                </Badge>
+   919→              ))}
+   920→            </div>
+   921→          </div>
+   922→        </div>
+   923→      </footer>
+   924→    </div>
+   925→  );
+   926→}
+   927→

@@ -1,0 +1,1284 @@
+     1→'use client';
+     2→
+     3→import { useState, useMemo } from 'react';
+     4→import { useSession } from 'next-auth/react';
+     5→import { motion, AnimatePresence } from 'framer-motion';
+     6→import {
+     7→  ShieldCheck,
+     8→  User,
+     9→  FileText,
+    10→  ScanFace,
+    11→  TrendingUp,
+    12→  Building,
+    13→  Landmark,
+    14→  CheckCircle2,
+    15→  Clock,
+    16→  XCircle,
+    17→  AlertCircle,
+    18→  Play,
+    19→  ChevronRight,
+    20→  CreditCard,
+    21→  Globe,
+    22→  Users,
+    23→  UserPlus,
+    24→  ArrowRight,
+    25→  Search,
+    26→  X,
+    27→  ThumbsUp,
+    28→  ThumbsDown,
+    29→  HelpCircle,
+    30→  Eye,
+    31→  AlertTriangle,
+    32→  ClipboardCheck,
+    33→} from 'lucide-react';
+    34→import {
+    35→  Card,
+    36→  CardContent,
+    37→  CardHeader,
+    38→  CardTitle,
+    39→  CardDescription,
+    40→} from '@/components/ui/card';
+    41→import { Badge } from '@/components/ui/badge';
+    42→import { Button } from '@/components/ui/button';
+    43→import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+    44→import { Progress } from '@/components/ui/progress';
+    45→import { ScrollArea } from '@/components/ui/scroll-area';
+    46→import { Separator } from '@/components/ui/separator';
+    47→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    48→import {
+    49→  Table,
+    50→  TableBody,
+    51→  TableCell,
+    52→  TableHead,
+    53→  TableHeader,
+    54→  TableRow,
+    55→} from '@/components/ui/table';
+    56→import { useApi } from '@/hooks/use-api';
+    57→import { TRUST_LEVELS, formatDate, getStatusStyle } from '@/lib/platform-data';
+    58→import { getDataScope } from '@/lib/rbac';
+    59→import VerifyMeOnboarding from '@/components/platform/VerifyMeOnboarding';
+    60→
+    61→// Props
+    62→interface IdentityTrustProps {
+    63→  searchQuery?: string;
+    64→  onClearSearch?: () => void;
+    65→}
+    66→
+    67→// Types
+    68→interface Credential {
+    69→  id: string;
+    70→  credentialType: string;
+    71→  verificationStatus: string;
+    72→  validTo: string | null;
+    73→}
+    74→
+    75→interface Verification {
+    76→  id: string;
+    77→  verificationType: string;
+    78→  status: string;
+    79→  confidence: number;
+    80→  completedAt: string | null;
+    81→}
+    82→
+    83→interface IdentityProfile {
+    84→  id: string;
+    85→  firstName: string;
+    86→  lastName: string;
+    87→  email: string;
+    88→  trustLevel: number;
+    89→  trustScore: number;
+    90→  status: string;
+    91→  nationality: string;
+    92→  credentials: Credential[];
+    93→  verifications: Verification[];
+    94→}
+    95→
+    96→interface IdentitiesResponse {
+    97→  identities: IdentityProfile[];
+    98→  total: number;
+    99→}
+   100→
+   101→// Icon mapping for trust levels
+   102→const TRUST_ICONS: Record<string, React.ReactNode> = {
+   103→  User: <User className="size-5" />,
+   104→  FileText: <FileText className="size-5" />,
+   105→  ScanFace: <ScanFace className="size-5" />,
+   106→  TrendingUp: <TrendingUp className="size-5" />,
+   107→  Building: <Building className="size-5" />,
+   108→  Landmark: <Landmark className="size-5" />,
+   109→};
+   110→
+   111→// Verification status icons
+   112→function VerificationStatusIcon({ status }: { status: string }) {
+   113→  switch (status.toLowerCase()) {
+   114→    case 'passed':
+   115→    case 'completed':
+   116→    case 'verified':
+   117→      return <CheckCircle2 className="size-4 text-emerald-500" />;
+   118→    case 'pending':
+   119→      return <Clock className="size-4 text-amber-500" />;
+   120→    case 'failed':
+   121→    case 'rejected':
+   122→      return <XCircle className="size-4 text-red-500" />;
+   123→    case 'in_progress':
+   124→      return <AlertCircle className="size-4 text-cyan-500" />;
+   125→    default:
+   126→      return <Clock className="size-4 text-slate-400" />;
+   127→  }
+   128→}
+   129→
+   130→// Credential type icon
+   131→function CredentialTypeIcon({ type }: { type: string }) {
+   132→  switch (type.toLowerCase()) {
+   133→    case 'passport':
+   134→      return <Globe className="size-4 text-blue-500" />;
+   135→    case 'national_id':
+   136→      return <CreditCard className="size-4 text-violet-500" />;
+   137→    case 'biometric':
+   138→      return <ScanFace className="size-4 text-emerald-500" />;
+   139→    case 'banking':
+   140→      return <Building className="size-4 text-cyan-500" />;
+   141→    case 'employer':
+   142→      return <FileText className="size-4 text-amber-500" />;
+   143→    case 'visa':
+   144→      return <Globe className="size-4 text-orange-500" />;
+   145→    case 'government':
+   146→      return <Landmark className="size-4 text-indigo-500" />;
+   147→    default:
+   148→      return <CreditCard className="size-4 text-slate-400" />;
+   149→  }
+   150→}
+   151→
+   152→// Verification type display name
+   153→function getVerificationTypeName(type: string): string {
+   154→  const names: Record<string, string> = {
+   155→    document: 'Document Verification',
+   156→    biometric_face: 'Biometric Face Match',
+   157→    liveness: 'Liveness Detection',
+   158→    open_banking: 'Open Banking',
+   159→    income: 'Income Verification',
+   160→    employer: 'Employer Verification',
+   161→    government: 'Government Database',
+   162→  };
+   163→  return names[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+   164→}
+   165→
+   166→// Credential type display name
+   167→function getCredentialTypeName(type: string): string {
+   168→  const names: Record<string, string> = {
+   169→    passport: 'Passport',
+   170→    national_id: 'National ID',
+   171→    biometric: 'Biometric',
+   172→    banking: 'Banking',
+   173→    employer: 'Employer',
+   174→    visa: 'Visa',
+   175→    government: 'Government',
+   176→    residence_permit: 'Residence Permit',
+   177→    driving_licence: 'Driving Licence',
+   178→  };
+   179→  return names[type] ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+   180→}
+   181→
+   182→// Animation variants
+   183→const ladderStepVariants = {
+   184→  hidden: { opacity: 0, x: -20 },
+   185→  visible: (i: number) => ({
+   186→    opacity: 1,
+   187→    x: 0,
+   188→    transition: { delay: i * 0.12, duration: 0.4, ease: 'easeOut' },
+   189→  }),
+   190→};
+   191→
+   192→const panelVariants = {
+   193→  hidden: { opacity: 0, y: 10 },
+   194→  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
+   195→  exit: { opacity: 0, y: -10, transition: { duration: 0.2 } },
+   196→};
+   197→
+   198→// ─── Tenant View Component ──────────────────────────────────────────────────
+   199→
+   200→function TenantIdentityView({
+   201→  profile,
+   202→  onStartOnboarding,
+   203→}: {
+   204→  profile: IdentityProfile | null;
+   205→  onStartOnboarding: () => void;
+   206→}) {
+   207→  if (!profile) {
+   208→    return (
+   209→      <Card>
+   210→        <CardContent className="py-12">
+   211→          <div className="text-center">
+   212→            <User className="mx-auto size-10 text-muted-foreground/40" />
+   213→            <h3 className="mt-3 text-sm font-medium text-muted-foreground">No Identity Profile Found</h3>
+   214→            <p className="mt-1 text-xs text-muted-foreground/70">
+   215→              You don&apos;t have an identity profile yet. Start the onboarding process to create one.
+   216→            </p>
+   217→            <Button
+   218→              size="sm"
+   219→              className="mt-4 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+   220→              onClick={onStartOnboarding}
+   221→            >
+   222→              <UserPlus className="size-3.5" />
+   223→              Start Onboarding
+   224→              <ArrowRight className="size-3.5" />
+   225→            </Button>
+   226→          </div>
+   227→        </CardContent>
+   228→      </Card>
+   229→    );
+   230→  }
+   231→
+   232→  const trustLevelData = TRUST_LEVELS[profile.trustLevel] ?? TRUST_LEVELS[0];
+   233→  const statusStyle = getStatusStyle(profile.status);
+   234→
+   235→  return (
+   236→    <div className="space-y-6">
+   237→      {/* My Identity Profile Card */}
+   238→      <Card>
+   239→        <CardHeader>
+   240→          <div className="flex items-center justify-between">
+   241→            <div>
+   242→              <CardTitle className="text-base">My Identity Profile</CardTitle>
+   243→              <CardDescription>Your personal identity verification status</CardDescription>
+   244→            </div>
+   245→            <Badge
+   246→              variant="outline"
+   247→              className="text-xs"
+   248→              style={{
+   249→                backgroundColor: statusStyle.bgColor,
+   250→                color: statusStyle.color,
+   251→                borderColor: statusStyle.color,
+   252→              }}
+   253→            >
+   254→              {profile.status}
+   255→            </Badge>
+   256→          </div>
+   257→        </CardHeader>
+   258→        <CardContent>
+   259→          <div className="flex flex-col sm:flex-row items-start gap-6">
+   260→            {/* Avatar */}
+   261→            <div className="flex size-16 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xl font-bold">
+   262→              {profile.firstName[0]}{profile.lastName[0]}
+   263→            </div>
+   264→            {/* Info */}
+   265→            <div className="flex-1 space-y-4 min-w-0">
+   266→              <div>
+   267→                <h3 className="text-lg font-semibold">{profile.firstName} {profile.lastName}</h3>
+   268→                <p className="text-sm text-muted-foreground">{profile.email}</p>
+   269→                {profile.nationality && (
+   270→                  <p className="text-sm text-muted-foreground">Nationality: {profile.nationality}</p>
+   271→                )}
+   272→              </div>
+   273→              <div className="flex flex-wrap items-center gap-3">
+   274→                <Badge
+   275→                  variant="outline"
+   276→                  className="text-xs px-2 py-0.5"
+   277→                  style={{
+   278→                    backgroundColor: trustLevelData.bgColor,
+   279→                    color: trustLevelData.color,
+   280→                    borderColor: trustLevelData.color,
+   281→                  }}
+   282→                >
+   283→                  L{profile.trustLevel} {trustLevelData.name}
+   284→                </Badge>
+   285→                <div className="flex items-center gap-2">
+   286→                  <span className="text-xs text-muted-foreground">Trust Score:</span>
+   287→                  <Progress value={profile.trustScore} className="h-2 w-24" />
+   288→                  <span className="text-xs font-medium">{profile.trustScore}</span>
+   289→                </div>
+   290→              </div>
+   291→            </div>
+   292→            {/* Action */}
+   293→            <div className="shrink-0">
+   294→              {profile.status === 'pending' || profile.status === 'in_progress' ? (
+   295→                <Button
+   296→                  size="sm"
+   297→                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+   298→                  onClick={onStartOnboarding}
+   299→                >
+   300→                  <UserPlus className="size-3.5" />
+   301→                  Continue Onboarding
+   302→                  <ArrowRight className="size-3.5" />
+   303→                </Button>
+   304→              ) : profile.status === 'verified' ? (
+   305→                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1">
+   306→                  <CheckCircle2 className="size-3.5" />
+   307→                  Verified
+   308→                </Badge>
+   309→              ) : (
+   310→                <Button
+   311→                  size="sm"
+   312→                  variant="outline"
+   313→                  className="gap-1.5"
+   314→                  onClick={onStartOnboarding}
+   315→                >
+   316→                  <UserPlus className="size-3.5" />
+   317→                  Start Onboarding
+   318→                </Button>
+   319→              )}
+   320→            </div>
+   321→          </div>
+   322→        </CardContent>
+   323→      </Card>
+   324→
+   325→      {/* Trust Ladder for tenant */}
+   326→      <Card>
+   327→        <CardHeader>
+   328→          <CardTitle className="text-base">Your Trust Ladder</CardTitle>
+   329→          <CardDescription>Progress through identity verification levels</CardDescription>
+   330→        </CardHeader>
+   331→        <CardContent>
+   332→          <div className="relative">
+   333→            {TRUST_LEVELS.map((level, index) => {
+   334→              const isSelected = profile.trustLevel === level.level;
+   335→              const isAchieved = profile.trustLevel >= level.level;
+   336→              const isHighlighted = isSelected || isAchieved;
+   337→
+   338→              return (
+   339→                <motion.div
+   340→                  key={level.level}
+   341→                  custom={index}
+   342→                  variants={ladderStepVariants}
+   343→                  initial="hidden"
+   344→                  animate="visible"
+   345→                >
+   346→                  <div className="flex items-start gap-3">
+   347→                    <div className="flex flex-col items-center">
+   348→                      <div
+   349→                        className={`flex size-9 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+   350→                          isHighlighted
+   351→                            ? 'border-emerald-500 shadow-md'
+   352→                            : 'border-muted-foreground/20'
+   353→                        }`}
+   354→                        style={{
+   355→                          backgroundColor: isHighlighted ? level.bgColor : 'transparent',
+   356→                        }}
+   357→                      >
+   358→                        <span
+   359→                          className="text-xs font-bold"
+   360→                          style={{ color: isHighlighted ? level.color : '#94a3b8' }}
+   361→                        >
+   362→                          {level.level}
+   363→                        </span>
+   364→                      </div>
+   365→                      {index < TRUST_LEVELS.length - 1 && (
+   366→                        <div
+   367→                          className={`h-6 w-0.5 transition-colors duration-300 ${
+   368→                            isAchieved && profile.trustLevel !== level.level
+   369→                              ? 'bg-emerald-300'
+   370→                              : 'bg-muted-foreground/15'
+   371→                          }`}
+   372→                        />
+   373→                      )}
+   374→                    </div>
+   375→                    <div className={`min-w-0 pb-4 ${index === TRUST_LEVELS.length - 1 ? 'pb-0' : ''}`}>
+   376→                      <div className="flex items-center gap-2">
+   377→                        <span style={{ color: isHighlighted ? level.color : '#94a3b8' }}>
+   378→                          {TRUST_ICONS[level.icon] ?? <User className="size-4" />}
+   379→                        </span>
+   380→                        <span
+   381→                          className={`text-sm font-semibold ${
+   382→                            isHighlighted ? 'text-foreground' : 'text-muted-foreground'
+   383→                          }`}
+   384→                        >
+   385→                          {level.name}
+   386→                        </span>
+   387→                      </div>
+   388→                      <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+   389→                        {level.description}
+   390→                      </p>
+   391→                    </div>
+   392→                  </div>
+   393→                </motion.div>
+   394→              );
+   395→            })}
+   396→          </div>
+   397→        </CardContent>
+   398→      </Card>
+   399→
+   400→      {/* Verification records & Credentials for tenant */}
+   401→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   402→        <Card>
+   403→          <CardHeader>
+   404→            <div className="flex items-center justify-between">
+   405→              <div>
+   406→                <CardTitle className="text-base">Verification Records</CardTitle>
+   407→                <CardDescription>Your verification workflow</CardDescription>
+   408→              </div>
+   409→              <Badge variant="outline" className="text-xs">
+   410→                {profile.verifications.length} checks
+   411→              </Badge>
+   412→            </div>
+   413→          </CardHeader>
+   414→          <CardContent>
+   415→            <ScrollArea className="max-h-96">
+   416→              <div className="space-y-3">
+   417→                {profile.verifications.length === 0 && (
+   418→                  <div className="py-8 text-center text-sm text-muted-foreground">
+   419→                    No verification records yet
+   420→                  </div>
+   421→                )}
+   422→                {profile.verifications.map((v) => {
+   423→                  const vStatusStyle = getStatusStyle(v.status);
+   424→                  return (
+   425→                    <div
+   426→                      key={v.id}
+   427→                      className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/30"
+   428→                    >
+   429→                      <div className="mt-0.5">
+   430→                        <VerificationStatusIcon status={v.status} />
+   431→                      </div>
+   432→                      <div className="min-w-0 flex-1 space-y-1.5">
+   433→                        <div className="flex items-center justify-between">
+   434→                          <span className="text-sm font-medium">
+   435→                            {getVerificationTypeName(v.verificationType)}
+   436→                          </span>
+   437→                          <Badge
+   438→                            variant="outline"
+   439→                            className="text-[10px] px-1.5 py-0"
+   440→                            style={{
+   441→                              backgroundColor: vStatusStyle.bgColor,
+   442→                              color: vStatusStyle.color,
+   443→                              borderColor: vStatusStyle.color,
+   444→                            }}
+   445→                          >
+   446→                            {v.status}
+   447→                          </Badge>
+   448→                        </div>
+   449→                        <div className="flex items-center gap-2">
+   450→                          <span className="text-xs text-muted-foreground">Confidence:</span>
+   451→                          <Progress value={v.confidence} className="h-1.5 w-20" />
+   452→                          <span className="text-xs font-medium">{v.confidence}%</span>
+   453→                        </div>
+   454→                        {v.completedAt && (
+   455→                          <div className="text-xs text-muted-foreground">
+   456→                            Completed: {formatDate(v.completedAt)}
+   457→                          </div>
+   458→                        )}
+   459→                      </div>
+   460→                    </div>
+   461→                  );
+   462→                })}
+   463→              </div>
+   464→            </ScrollArea>
+   465→          </CardContent>
+   466→        </Card>
+   467→
+   468→        <Card>
+   469→          <CardHeader>
+   470→            <div className="flex items-center justify-between">
+   471→              <div>
+   472→                <CardTitle className="text-base">Credentials</CardTitle>
+   473→                <CardDescription>Identity credentials & documents</CardDescription>
+   474→              </div>
+   475→              <Badge variant="outline" className="text-xs">
+   476→                {profile.credentials.length} items
+   477→              </Badge>
+   478→            </div>
+   479→          </CardHeader>
+   480→          <CardContent>
+   481→            <ScrollArea className="max-h-96">
+   482→              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   483→                {profile.credentials.length === 0 && (
+   484→                  <div className="col-span-full py-8 text-center text-sm text-muted-foreground">
+   485→                    No credentials yet
+   486→                  </div>
+   487→                )}
+   488→                {profile.credentials.map((cred) => {
+   489→                  const cStatusStyle = getStatusStyle(cred.verificationStatus);
+   490→                  return (
+   491→                    <div key={cred.id} className="rounded-lg border p-3 transition-colors hover:bg-muted/30">
+   492→                      <div className="flex items-start gap-2">
+   493→                        <CredentialTypeIcon type={cred.credentialType} />
+   494→                        <div className="min-w-0 flex-1">
+   495→                          <div className="text-sm font-medium truncate">
+   496→                            {getCredentialTypeName(cred.credentialType)}
+   497→                          </div>
+   498→                          <Badge
+   499→                            variant="outline"
+   500→                            className="mt-1 text-[10px] px-1.5 py-0"
+   501→                            style={{
+   502→                              backgroundColor: cStatusStyle.bgColor,
+   503→                              color: cStatusStyle.color,
+   504→                              borderColor: cStatusStyle.color,
+   505→                            }}
+   506→                          >
+   507→                            {cred.verificationStatus}
+   508→                          </Badge>
+   509→                          {cred.validTo && (
+   510→                            <div className="mt-1 text-xs text-muted-foreground">
+   511→                              Expires: {formatDate(cred.validTo)}
+   512→                            </div>
+   513→                          )}
+   514→                        </div>
+   515→                      </div>
+   516→                    </div>
+   517→                  );
+   518→                })}
+   519→              </div>
+   520→            </ScrollArea>
+   521→          </CardContent>
+   522→        </Card>
+   523→      </div>
+   524→    </div>
+   525→  );
+   526→}
+   527→
+   528→// ─── Verifier Review Actions Component ──────────────────────────────────────
+   529→
+   530→function VerifierReviewActions({
+   531→  verification,
+   532→  profileId,
+   533→  onAction,
+   534→}: {
+   535→  verification: Verification;
+   536→  profileId: string;
+   537→  onAction: (profileId: string, verificationId: string, action: 'approved' | 'rejected' | 'more_evidence') => void;
+   538→}) {
+   539→  if (verification.status !== 'pending' && verification.status !== 'in_progress') {
+   540→    return null;
+   541→  }
+   542→
+   543→  return (
+   544→    <div className="flex flex-wrap gap-1.5 mt-2">
+   545→      <Button
+   546→        size="sm"
+   547→        className="h-6 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2"
+   548→        onClick={(e) => {
+   549→          e.stopPropagation();
+   550→          onAction(profileId, verification.id, 'approved');
+   551→        }}
+   552→      >
+   553→        <ThumbsUp className="mr-0.5 size-2.5" />
+   554→        Approve
+   555→      </Button>
+   556→      <Button
+   557→        size="sm"
+   558→        variant="destructive"
+   559→        className="h-6 text-[10px] px-2"
+   560→        onClick={(e) => {
+   561→          e.stopPropagation();
+   562→          onAction(profileId, verification.id, 'rejected');
+   563→        }}
+   564→      >
+   565→        <ThumbsDown className="mr-0.5 size-2.5" />
+   566→        Reject
+   567→      </Button>
+   568→      <Button
+   569→        size="sm"
+   570→        variant="outline"
+   571→        className="h-6 text-[10px] px-2"
+   572→        onClick={(e) => {
+   573→          e.stopPropagation();
+   574→          onAction(profileId, verification.id, 'more_evidence');
+   575→        }}
+   576→      >
+   577→        <HelpCircle className="mr-0.5 size-2.5" />
+   578→        Request More Evidence
+   579→      </Button>
+   580→    </div>
+   581→  );
+   582→}
+   583→
+   584→// ─── Main Component ──────────────────────────────────────────────────────────
+   585→
+   586→export default function IdentityTrust({ searchQuery = '', onClearSearch }: IdentityTrustProps) {
+   587→  const { data: session } = useSession();
+   588→  const userRole = (session?.user?.role as string) || 'tenant';
+   589→  const dataScope = getDataScope(userRole as 'platform_admin' | 'compliance_officer' | 'property_manager' | 'identity_verifier' | 'risk_analyst' | 'partner_integration_manager' | 'partner_user' | 'tenant');
+   590→  const isTenant = dataScope === 'own';
+   591→  const isVerifier = userRole === 'identity_verifier';
+   592→
+   593→  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+   594→  const [activeTab, setActiveTab] = useState('profiles');
+   595→  const { data: identitiesData, isLoading } = useApi<IdentitiesResponse>('identities', '/api/identities', true, {
+   596→    userId: session?.user?.id || '',
+   597→    role: session?.user?.role || '',
+   598→  });
+   599→
+   600→  const allIdentities = identitiesData?.identities ?? [];
+   601→
+   602→  // Filter identities based on role scope
+   603→  const scopedIdentities = useMemo(() => {
+   604→    if (isTenant) {
+   605→      // Tenant should only see their own profile — match by user email or id
+   606→      const userId = session?.user?.id || '';
+   607→      const userEmail = session?.user?.email || '';
+   608→      return allIdentities.filter(
+   609→        (p) => p.id === userId || p.email === userEmail
+   610→      );
+   611→    }
+   612→    return allIdentities;
+   613→  }, [allIdentities, isTenant, session?.user?.id, session?.user?.email]);
+   614→
+   615→  // Apply search filtering on the profiles tab
+   616→  const filteredIdentities = useMemo(() => {
+   617→    if (!searchQuery.trim() || activeTab !== 'profiles') return scopedIdentities;
+   618→    const q = searchQuery.toLowerCase();
+   619→    return scopedIdentities.filter(
+   620→      (p) =>
+   621→        p.firstName.toLowerCase().includes(q) ||
+   622→        p.lastName.toLowerCase().includes(q) ||
+   623→        p.email.toLowerCase().includes(q) ||
+   624→        (p.nationality && p.nationality.toLowerCase().includes(q))
+   625→    );
+   626→  }, [scopedIdentities, searchQuery, activeTab]);
+   627→
+   628→  const selectedProfile = scopedIdentities.find((p) => p.id === selectedProfileId) ?? null;
+   629→
+   630→  // Verifier: compute pending reviews
+   631→  const pendingReviews = useMemo(() => {
+   632→    if (!isVerifier) return [];
+   633→    return scopedIdentities.filter((p) =>
+   634→      p.verifications.some((v) => v.status === 'pending' || v.status === 'in_progress')
+   635→    );
+   636→  }, [scopedIdentities, isVerifier]);
+   637→
+   638→  // Handle verifier actions (local state update — will be connected to API)
+   639→  const handleVerifierAction = (_profileId: string, _verificationId: string, _action: 'approved' | 'rejected' | 'more_evidence') => {
+   640→    // In production this would call an API to update the verification status.
+   641→    // For now, the action buttons provide visual feedback of the review workflow.
+   642→  };
+   643→
+   644→  // Handle onboarding complete — switch back to profiles tab
+   645→  const handleOnboardingComplete = () => {
+   646→    setActiveTab('profiles');
+   647→  };
+   648→
+   649→  // ─── Tenant View ─────────────────────────────────────────────────────────
+   650→  if (isTenant) {
+   651→    const myProfile = scopedIdentities[0] ?? null;
+   652→    return (
+   653→      <div className="space-y-6">
+   654→        <Tabs value={activeTab} onValueChange={setActiveTab}>
+   655→          <TabsList className="mb-2">
+   656→            <TabsTrigger value="profiles" className="gap-1.5">
+   657→              <User className="size-3.5" />
+   658→              My Profile
+   659→            </TabsTrigger>
+   660→            <TabsTrigger value="onboarding" className="gap-1.5">
+   661→              <UserPlus className="size-3.5" />
+   662→              Onboarding
+   663→            </TabsTrigger>
+   664→          </TabsList>
+   665→
+   666→          <TabsContent value="profiles">
+   667→            <TenantIdentityView
+   668→              profile={myProfile}
+   669→              onStartOnboarding={() => setActiveTab('onboarding')}
+   670→            />
+   671→          </TabsContent>
+   672→
+   673→          <TabsContent value="onboarding">
+   674→            <VerifyMeOnboarding onComplete={handleOnboardingComplete} />
+   675→          </TabsContent>
+   676→        </Tabs>
+   677→      </div>
+   678→    );
+   679→  }
+   680→
+   681→  // ─── Non-Tenant Views (Admin, Verifier, etc.) ────────────────────────────
+   682→
+   683→  return (
+   684→    <div className="space-y-6">
+   685→      {/* Tabs: Profiles | Onboarding */}
+   686→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   687→        <TabsList className="mb-2">
+   688→          <TabsTrigger value="profiles" className="gap-1.5">
+   689→            <Users className="size-3.5" />
+   690→            Profiles
+   691→          </TabsTrigger>
+   692→          <TabsTrigger value="onboarding" className="gap-1.5">
+   693→            <UserPlus className="size-3.5" />
+   694→            Onboarding
+   695→          </TabsTrigger>
+   696→        </TabsList>
+   697→
+   698→        <TabsContent value="profiles">
+   699→          {/* Search Info Banner */}
+   700→          {searchQuery.trim() && activeTab === 'profiles' && (
+   701→            <motion.div
+   702→              initial={{ opacity: 0, y: -5 }}
+   703→              animate={{ opacity: 1, y: 0 }}
+   704→              className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3"
+   705→            >
+   706→              <Search className="size-4 text-emerald-600 shrink-0" />
+   707→              <span className="text-sm text-emerald-800">
+   708→                Showing <strong>{filteredIdentities.length}</strong> result{filteredIdentities.length !== 1 ? 's' : ''} for &ldquo;{searchQuery}&rdquo;
+   709→              </span>
+   710→              {onClearSearch && (
+   711→                <Button
+   712→                  variant="ghost"
+   713→                  size="sm"
+   714→                  className="ml-auto h-6 gap-1 text-xs text-emerald-700 hover:bg-emerald-100"
+   715→                  onClick={onClearSearch}
+   716→                >
+   717→                  <X className="size-3" />
+   718→                  Clear
+   719→                </Button>
+   720→              )}
+   721→            </motion.div>
+   722→          )}
+   723→
+   724→          {/* Identity Verifier: Pending Reviews Section */}
+   725→          {isVerifier && pendingReviews.length > 0 && (
+   726→            <motion.div
+   727→              initial={{ opacity: 0, y: -5 }}
+   728→              animate={{ opacity: 1, y: 0 }}
+   729→              className="mb-4"
+   730→            >
+   731→              <Card className="border-amber-200 bg-amber-50/50">
+   732→                <CardHeader className="pb-3">
+   733→                  <div className="flex items-center justify-between">
+   734→                    <div className="flex items-center gap-2">
+   735→                      <div className="flex size-8 items-center justify-center rounded-lg bg-amber-100">
+   736→                        <ClipboardCheck className="size-4 text-amber-700" />
+   737→                      </div>
+   738→                      <div>
+   739→                        <CardTitle className="text-base">Pending Reviews</CardTitle>
+   740→                        <CardDescription>
+   741→                          {pendingReviews.length} profile{pendingReviews.length !== 1 ? 's' : ''} awaiting verification review
+   742→                        </CardDescription>
+   743→                      </div>
+   744→                    </div>
+   745→                    <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+   746→                      {pendingReviews.length} pending
+   747→                    </Badge>
+   748→                  </div>
+   749→                </CardHeader>
+   750→                <CardContent>
+   751→                  <div className="space-y-2">
+   752→                    {pendingReviews.map((profile) => {
+   753→                      const pendingVerifications = profile.verifications.filter(
+   754→                        (v) => v.status === 'pending' || v.status === 'in_progress'
+   755→                      );
+   756→                      const trustLevelData = TRUST_LEVELS[profile.trustLevel] ?? TRUST_LEVELS[0];
+   757→                      return (
+   758→                        <div
+   759→                          key={profile.id}
+   760→                          className="flex items-center justify-between rounded-lg border border-amber-200 bg-white p-3 cursor-pointer hover:bg-amber-50/50 transition-colors"
+   761→                          onClick={() => setSelectedProfileId(profile.id)}
+   762→                        >
+   763→                          <div className="flex items-center gap-3 min-w-0">
+   764→                            <div className="flex size-8 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xs font-bold shrink-0">
+   765→                              {profile.firstName[0]}{profile.lastName[0]}
+   766→                            </div>
+   767→                            <div className="min-w-0">
+   768→                              <div className="text-sm font-medium truncate">
+   769→                                {profile.firstName} {profile.lastName}
+   770→                              </div>
+   771→                              <div className="text-xs text-muted-foreground truncate">{profile.email}</div>
+   772→                            </div>
+   773→                          </div>
+   774→                          <div className="flex items-center gap-2 shrink-0">
+   775→                            <Badge
+   776→                              variant="outline"
+   777→                              className="text-[10px] px-1.5 py-0"
+   778→                              style={{
+   779→                                backgroundColor: trustLevelData.bgColor,
+   780→                                color: trustLevelData.color,
+   781→                                borderColor: trustLevelData.color,
+   782→                              }}
+   783→                            >
+   784→                              L{profile.trustLevel}
+   785→                            </Badge>
+   786→                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+   787→                              {pendingVerifications.length} check{pendingVerifications.length !== 1 ? 's' : ''}
+   788→                            </Badge>
+   789→                            <ChevronRight className="size-4 text-amber-500" />
+   790→                          </div>
+   791→                        </div>
+   792→                      );
+   793→                    })}
+   794→                  </div>
+   795→                </CardContent>
+   796→              </Card>
+   797→            </motion.div>
+   798→          )}
+   799→
+   800→          <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+   801→            {/* Trust Ladder Visualization */}
+   802→            <motion.div
+   803→              initial="hidden"
+   804→              animate="visible"
+   805→              className="xl:col-span-3"
+   806→            >
+   807→              <Card className="h-full">
+   808→                <CardHeader>
+   809→                  <CardTitle className="text-base">Trust Ladder</CardTitle>
+   810→                  <CardDescription>6-level identity verification framework</CardDescription>
+   811→                </CardHeader>
+   812→                <CardContent>
+   813→                  <div className="relative">
+   814→                    {TRUST_LEVELS.map((level, index) => {
+   815→                      const isSelected = selectedProfile?.trustLevel === level.level;
+   816→                      const isAchieved = selectedProfile ? selectedProfile.trustLevel >= level.level : false;
+   817→                      const isHighlighted = isSelected || (selectedProfile && isAchieved);
+   818→
+   819→                      return (
+   820→                        <motion.div
+   821→                          key={level.level}
+   822→                          custom={index}
+   823→                          variants={ladderStepVariants}
+   824→                          initial="hidden"
+   825→                          animate="visible"
+   826→                        >
+   827→                          <div className="flex items-start gap-3">
+   828→                            {/* Vertical connector line */}
+   829→                            <div className="flex flex-col items-center">
+   830→                              <div
+   831→                                className={`flex size-10 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+   832→                                  isHighlighted
+   833→                                    ? 'border-emerald-500 shadow-md'
+   834→                                    : 'border-muted-foreground/20'
+   835→                                }`}
+   836→                                style={{
+   837→                                  backgroundColor: isHighlighted ? level.bgColor : 'transparent',
+   838→                                }}
+   839→                              >
+   840→                                <span
+   841→                                  className="text-sm font-bold"
+   842→                                  style={{ color: isHighlighted ? level.color : '#94a3b8' }}
+   843→                                >
+   844→                                  {level.level}
+   845→                                </span>
+   846→                              </div>
+   847→                              {index < TRUST_LEVELS.length - 1 && (
+   848→                                <div
+   849→                                  className={`h-8 w-0.5 transition-colors duration-300 ${
+   850→                                    isAchieved && selectedProfile?.trustLevel !== level.level
+   851→                                      ? 'bg-emerald-300'
+   852→                                      : 'bg-muted-foreground/15'
+   853→                                  }`}
+   854→                                />
+   855→                              )}
+   856→                            </div>
+   857→
+   858→                            {/* Level details */}
+   859→                            <div className={`min-w-0 pb-6 ${index === TRUST_LEVELS.length - 1 ? 'pb-0' : ''}`}>
+   860→                              <div className="flex items-center gap-2">
+   861→                                <span style={{ color: isHighlighted ? level.color : '#94a3b8' }}>
+   862→                                  {TRUST_ICONS[level.icon] ?? <User className="size-4" />}
+   863→                                </span>
+   864→                                <span
+   865→                                  className={`text-sm font-semibold ${
+   866→                                    isHighlighted ? 'text-foreground' : 'text-muted-foreground'
+   867→                                  }`}
+   868→                                >
+   869→                                  {level.name}
+   870→                                </span>
+   871→                              </div>
+   872→                              <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+   873→                                {level.description}
+   874→                              </p>
+   875→                              {isSelected && (
+   876→                                <motion.div
+   877→                                  initial={{ opacity: 0, scale: 0.9 }}
+   878→                                  animate={{ opacity: 1, scale: 1 }}
+   879→                                  className="mt-1"
+   880→                                >
+   881→                                  <Badge
+   882→                                    className="text-[10px] px-1.5 py-0"
+   883→                                    style={{
+   884→                                      backgroundColor: level.bgColor,
+   885→                                      color: level.color,
+   886→                                      borderColor: level.color,
+   887→                                    }}
+   888→                                  >
+   889→                                    Current Level
+   890→                                  </Badge>
+   891→                                </motion.div>
+   892→                              )}
+   893→                            </div>
+   894→                          </div>
+   895→                        </motion.div>
+   896→                      );
+   897→                    })}
+   898→                  </div>
+   899→                </CardContent>
+   900→              </Card>
+   901→            </motion.div>
+   902→
+   903→            {/* Right section: Table + Details */}
+   904→            <div className="space-y-6 xl:col-span-9">
+   905→              {/* Identity Profiles Table */}
+   906→              <Card>
+   907→                <CardHeader>
+   908→                  <div className="flex items-center justify-between">
+   909→                    <div>
+   910→                      <CardTitle className="text-base">Identity Profiles</CardTitle>
+   911→                      <CardDescription>
+   912→                        {isLoading ? 'Loading...' : `${filteredIdentities.length} profiles ${searchQuery.trim() ? 'matching' : 'registered'}`}
+   913→                      </CardDescription>
+   914→                    </div>
+   915→                    <div className="flex items-center gap-2">
+   916→                      <Badge variant="outline" className="text-xs">
+   917→                        <User className="mr-1 size-3" />
+   918→                        {filteredIdentities.length}
+   919→                      </Badge>
+   920→                      <Button
+   921→                        size="sm"
+   922→                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+   923→                        onClick={() => setActiveTab('onboarding')}
+   924→                      >
+   925→                        <UserPlus className="size-3.5" />
+   926→                        <span className="hidden sm:inline">New Onboarding</span>
+   927→                        <span className="sm:hidden">Onboard</span>
+   928→                      </Button>
+   929→                    </div>
+   930→                  </div>
+   931→                </CardHeader>
+   932→                <CardContent>
+   933→                  <ScrollArea className="max-h-96">
+   934→                    <Table>
+   935→                      <TableHeader>
+   936→                        <TableRow>
+   937→                          <TableHead>Name</TableHead>
+   938→                          <TableHead>Email</TableHead>
+   939→                          <TableHead>Trust Level</TableHead>
+   940→                          <TableHead>Trust Score</TableHead>
+   941→                          <TableHead>Status</TableHead>
+   942→                          <TableHead className="hidden md:table-cell">Nationality</TableHead>
+   943→                          <TableHead className="w-8"></TableHead>
+   944→                        </TableRow>
+   945→                      </TableHeader>
+   946→                      <TableBody>
+   947→                        {isLoading && (
+   948→                          <TableRow>
+   949→                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+   950→                              Loading identities...
+   951→                            </TableCell>
+   952→                          </TableRow>
+   953→                        )}
+   954→                        {!isLoading && filteredIdentities.length === 0 && (
+   955→                          <TableRow>
+   956→                            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+   957→                              {searchQuery.trim() ? 'No profiles match your search' : 'No identities found'}
+   958→                            </TableCell>
+   959→                          </TableRow>
+   960→                        )}
+   961→                        {filteredIdentities.map((profile) => {
+   962→                          const trustLevelData = TRUST_LEVELS[profile.trustLevel] ?? TRUST_LEVELS[0];
+   963→                          const pStatusStyle = getStatusStyle(profile.status);
+   964→                          const isSelected = selectedProfileId === profile.id;
+   965→
+   966→                          return (
+   967→                            <TableRow
+   968→                              key={profile.id}
+   969→                              className={`cursor-pointer transition-colors ${
+   970→                                isSelected ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''
+   971→                              }`}
+   972→                              onClick={() => setSelectedProfileId(isSelected ? null : profile.id)}
+   973→                            >
+   974→                              <TableCell className="font-medium">
+   975→                                <div className="flex items-center gap-2">
+   976→                                  {profile.firstName} {profile.lastName}
+   977→                                  {profile.status === 'verified' && (
+   978→                                    <Tooltip>
+   979→                                      <TooltipTrigger asChild>
+   980→                                        <button
+   981→                                          className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700 hover:bg-teal-100 transition-colors border border-teal-200"
+   982→                                          onClick={(e) => {
+   983→                                            e.stopPropagation();
+   984→                                            setActiveTab('onboarding');
+   985→                                          }}
+   986→                                        >
+   987→                                          View Onboarding
+   988→                                          <ArrowRight className="size-3" />
+   989→                                        </button>
+   990→                                      </TooltipTrigger>
+   991→                                      <TooltipContent>View the VerifyMe onboarding flow</TooltipContent>
+   992→                                    </Tooltip>
+   993→                                  )}
+   994→                                  {profile.status === 'pending' && (
+   995→                                    <Tooltip>
+   996→                                      <TooltipTrigger asChild>
+   997→                                        <button
+   998→                                          className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 hover:bg-amber-100 transition-colors border border-amber-200"
+   999→                                          onClick={(e) => {
+  1000→                                            e.stopPropagation();
+  1001→                                            setActiveTab('onboarding');
+  1002→                                          }}
+  1003→                                        >
+  1004→                                          Start Onboarding
+  1005→                                          <ArrowRight className="size-3" />
+  1006→                                        </button>
+  1007→                                      </TooltipTrigger>
+  1008→                                      <TooltipContent>Continue to VerifyMe onboarding flow</TooltipContent>
+  1009→                                    </Tooltip>
+  1010→                                  )}
+  1011→                                  {profile.status === 'in_progress' && (
+  1012→                                    <Tooltip>
+  1013→                                      <TooltipTrigger asChild>
+  1014→                                        <button
+  1015→                                          className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 hover:bg-cyan-100 transition-colors border border-cyan-200"
+  1016→                                          onClick={(e) => {
+  1017→                                            e.stopPropagation();
+  1018→                                            setActiveTab('onboarding');
+  1019→                                          }}
+  1020→                                        >
+  1021→                                          Continue Onboarding
+  1022→                                          <ArrowRight className="size-3" />
+  1023→                                        </button>
+  1024→                                      </TooltipTrigger>
+  1025→                                      <TooltipContent>Continue the VerifyMe onboarding process</TooltipContent>
+  1026→                                    </Tooltip>
+  1027→                                  )}
+  1028→                                </div>
+  1029→                              </TableCell>
+  1030→                              <TableCell className="text-muted-foreground text-sm">
+  1031→                                {profile.email}
+  1032→                              </TableCell>
+  1033→                              <TableCell>
+  1034→                                <Badge
+  1035→                                  variant="outline"
+  1036→                                  className="text-[10px] px-1.5 py-0"
+  1037→                                  style={{
+  1038→                                    backgroundColor: trustLevelData.bgColor,
+  1039→                                    color: trustLevelData.color,
+  1040→                                    borderColor: trustLevelData.color,
+  1041→                                  }}
+  1042→                                >
+  1043→                                  L{profile.trustLevel} {trustLevelData.name}
+  1044→                                </Badge>
+  1045→                              </TableCell>
+  1046→                              <TableCell>
+  1047→                                <div className="flex items-center gap-2">
+  1048→                                  <Progress value={profile.trustScore} className="h-1.5 w-16" />
+  1049→                                  <span className="text-xs text-muted-foreground">{profile.trustScore}</span>
+  1050→                                </div>
+  1051→                              </TableCell>
+  1052→                              <TableCell>
+  1053→                                <Badge
+  1054→                                  variant="outline"
+  1055→                                  className="text-[10px] px-1.5 py-0"
+  1056→                                  style={{
+  1057→                                    backgroundColor: pStatusStyle.bgColor,
+  1058→                                    color: pStatusStyle.color,
+  1059→                                    borderColor: pStatusStyle.color,
+  1060→                                  }}
+  1061→                                >
+  1062→                                  {profile.status}
+  1063→                                </Badge>
+  1064→                              </TableCell>
+  1065→                              <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+  1066→                                {profile.nationality || '—'}
+  1067→                              </TableCell>
+  1068→                              <TableCell>
+  1069→                                <ChevronRight
+  1070→                                  className={`size-4 text-muted-foreground transition-transform ${
+  1071→                                    isSelected ? 'rotate-90' : ''
+  1072→                                  }`}
+  1073→                                />
+  1074→                              </TableCell>
+  1075→                            </TableRow>
+  1076→                          );
+  1077→                        })}
+  1078→                      </TableBody>
+  1079→                    </Table>
+  1080→                  </ScrollArea>
+  1081→                </CardContent>
+  1082→              </Card>
+  1083→
+  1084→              {/* Selected Profile Details */}
+  1085→              <AnimatePresence mode="wait">
+  1086→                {selectedProfile && (
+  1087→                  <motion.div
+  1088→                    key={selectedProfile.id}
+  1089→                    variants={panelVariants}
+  1090→                    initial="hidden"
+  1091→                    animate="visible"
+  1092→                    exit="exit"
+  1093→                    className="grid grid-cols-1 gap-6 lg:grid-cols-2"
+  1094→                  >
+  1095→                    {/* Verification Workflow Panel */}
+  1096→                    <Card>
+  1097→                      <CardHeader>
+  1098→                        <div className="flex items-center justify-between">
+  1099→                          <div>
+  1100→                            <CardTitle className="text-base">Verification Records</CardTitle>
+  1101→                            <CardDescription>
+  1102→                              {selectedProfile.firstName}&apos;s verification workflow
+  1103→                            </CardDescription>
+  1104→                          </div>
+  1105→                          <Badge variant="outline" className="text-xs">
+  1106→                            {selectedProfile.verifications.length} checks
+  1107→                          </Badge>
+  1108→                        </div>
+  1109→                      </CardHeader>
+  1110→                      <CardContent>
+  1111→                        <ScrollArea className="max-h-96">
+  1112→                          <div className="space-y-3">
+  1113→                            {selectedProfile.verifications.length === 0 && (
+  1114→                              <div className="py-8 text-center text-sm text-muted-foreground">
+  1115→                                No verification records yet
+  1116→                              </div>
+  1117→                            )}
+  1118→                            {selectedProfile.verifications.map((v) => {
+  1119→                              const vStatusStyle = getStatusStyle(v.status);
+  1120→                              const isPendingOrInProgress = v.status === 'pending' || v.status === 'in_progress';
+  1121→                              return (
+  1122→                                <div
+  1123→                                  key={v.id}
+  1124→                                  className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/30"
+  1125→                                >
+  1126→                                  <div className="mt-0.5">
+  1127→                                    <VerificationStatusIcon status={v.status} />
+  1128→                                  </div>
+  1129→                                  <div className="min-w-0 flex-1 space-y-1.5">
+  1130→                                    <div className="flex items-center justify-between">
+  1131→                                      <span className="text-sm font-medium">
+  1132→                                        {getVerificationTypeName(v.verificationType)}
+  1133→                                      </span>
+  1134→                                      <Badge
+  1135→                                        variant="outline"
+  1136→                                        className="text-[10px] px-1.5 py-0"
+  1137→                                        style={{
+  1138→                                          backgroundColor: vStatusStyle.bgColor,
+  1139→                                          color: vStatusStyle.color,
+  1140→                                          borderColor: vStatusStyle.color,
+  1141→                                        }}
+  1142→                                      >
+  1143→                                        {v.status}
+  1144→                                      </Badge>
+  1145→                                    </div>
+  1146→                                    <div className="flex items-center gap-2">
+  1147→                                      <span className="text-xs text-muted-foreground">Confidence:</span>
+  1148→                                      <Progress value={v.confidence} className="h-1.5 w-20" />
+  1149→                                      <span className="text-xs font-medium">{v.confidence}%</span>
+  1150→                                    </div>
+  1151→                                    {v.completedAt && (
+  1152→                                      <div className="text-xs text-muted-foreground">
+  1153→                                        Completed: {formatDate(v.completedAt)}
+  1154→                                      </div>
+  1155→                                    )}
+  1156→                                    {/* Non-verifier: show Start Verification button */}
+  1157→                                    {!isVerifier && isPendingOrInProgress && (
+  1158→                                      <Button size="sm" variant="outline" className="mt-1 h-7 text-xs">
+  1159→                                        <Play className="mr-1 size-3" />
+  1160→                                        Start Verification
+  1161→                                      </Button>
+  1162→                                    )}
+  1163→                                    {/* Verifier: show review action buttons prominently */}
+  1164→                                    {isVerifier && isPendingOrInProgress && (
+  1165→                                      <VerifierReviewActions
+  1166→                                        verification={v}
+  1167→                                        profileId={selectedProfile.id}
+  1168→                                        onAction={handleVerifierAction}
+  1169→                                      />
+  1170→                                    )}
+  1171→                                  </div>
+  1172→                                </div>
+  1173→                              );
+  1174→                            })}
+  1175→                          </div>
+  1176→                        </ScrollArea>
+  1177→                      </CardContent>
+  1178→                    </Card>
+  1179→
+  1180→                    {/* Credential Cards */}
+  1181→                    <Card>
+  1182→                      <CardHeader>
+  1183→                        <div className="flex items-center justify-between">
+  1184→                          <div>
+  1185→                            <CardTitle className="text-base">Credentials</CardTitle>
+  1186→                            <CardDescription>
+  1187→                              Identity credentials & documents
+  1188→                            </CardDescription>
+  1189→                          </div>
+  1190→                          <Badge variant="outline" className="text-xs">
+  1191→                            {selectedProfile.credentials.length} items
+  1192→                          </Badge>
+  1193→                        </div>
+  1194→                      </CardHeader>
+  1195→                      <CardContent>
+  1196→                        <ScrollArea className="max-h-96">
+  1197→                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+  1198→                            {selectedProfile.credentials.length === 0 && (
+  1199→                              <div className="col-span-full py-8 text-center text-sm text-muted-foreground">
+  1200→                                No credentials yet
+  1201→                              </div>
+  1202→                            )}
+  1203→                            {selectedProfile.credentials.map((cred) => {
+  1204→                              const cStatusStyle = getStatusStyle(cred.verificationStatus);
+  1205→                              return (
+  1206→                                <motion.div
+  1207→                                  key={cred.id}
+  1208→                                  initial={{ opacity: 0, scale: 0.95 }}
+  1209→                                  animate={{ opacity: 1, scale: 1 }}
+  1210→                                  transition={{ duration: 0.2 }}
+  1211→                                >
+  1212→                                  <div className="rounded-lg border p-3 transition-colors hover:bg-muted/30">
+  1213→                                    <div className="flex items-start gap-2">
+  1214→                                      <CredentialTypeIcon type={cred.credentialType} />
+  1215→                                      <div className="min-w-0 flex-1">
+  1216→                                        <div className="text-sm font-medium truncate">
+  1217→                                          {getCredentialTypeName(cred.credentialType)}
+  1218→                                        </div>
+  1219→                                        <Badge
+  1220→                                          variant="outline"
+  1221→                                          className="mt-1 text-[10px] px-1.5 py-0"
+  1222→                                          style={{
+  1223→                                            backgroundColor: cStatusStyle.bgColor,
+  1224→                                            color: cStatusStyle.color,
+  1225→                                            borderColor: cStatusStyle.color,
+  1226→                                          }}
+  1227→                                        >
+  1228→                                          {cred.verificationStatus}
+  1229→                                        </Badge>
+  1230→                                        {cred.validTo && (
+  1231→                                          <div className="mt-1 text-xs text-muted-foreground">
+  1232→                                            Expires: {formatDate(cred.validTo)}
+  1233→                                          </div>
+  1234→                                        )}
+  1235→                                      </div>
+  1236→                                    </div>
+  1237→                                  </div>
+  1238→                                </motion.div>
+  1239→                              );
+  1240→                            })}
+  1241→                          </div>
+  1242→                        </ScrollArea>
+  1243→                      </CardContent>
+  1244→                    </Card>
+  1245→                  </motion.div>
+  1246→                )}
+  1247→              </AnimatePresence>
+  1248→
+  1249→              {/* Empty state when no profile selected */}
+  1250→              {!selectedProfile && (
+  1251→                <Card>
+  1252→                  <CardContent className="py-12">
+  1253→                    <div className="text-center">
+  1254→                      <ShieldCheck className="mx-auto size-10 text-muted-foreground/40" />
+  1255→                      <h3 className="mt-3 text-sm font-medium text-muted-foreground">Select a Profile</h3>
+  1256→                      <p className="mt-1 text-xs text-muted-foreground/70">
+  1257→                        Click on an identity profile above to view verification details and credentials
+  1258→                      </p>
+  1259→                      <Button
+  1260→                        variant="outline"
+  1261→                        size="sm"
+  1262→                        className="mt-4 gap-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+  1263→                        onClick={() => setActiveTab('onboarding')}
+  1264→                      >
+  1265→                        <UserPlus className="size-3.5" />
+  1266→                        Start New Onboarding
+  1267→                        <ArrowRight className="size-3.5" />
+  1268→                      </Button>
+  1269→                    </div>
+  1270→                  </CardContent>
+  1271→                </Card>
+  1272→              )}
+  1273→            </div>
+  1274→          </div>
+  1275→        </TabsContent>
+  1276→
+  1277→        <TabsContent value="onboarding">
+  1278→          <VerifyMeOnboarding onComplete={handleOnboardingComplete} />
+  1279→        </TabsContent>
+  1280→      </Tabs>
+  1281→    </div>
+  1282→  );
+  1283→}
+  1284→

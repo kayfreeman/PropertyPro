@@ -833,3 +833,166 @@ Stage Summary:
 - Search functionality works across identity profiles
 - Login modal properly closes on successful authentication
 - Logout preserves gateway URL instead of redirecting to localhost:3000
+
+## Task 3: Dashboard Layout Brand Styling Update
+**Agent**: styling-agent
+**Date**: 2026-06-06
+**Status**: ✅ Completed
+
+### Summary
+Updated the dashboard layout in `/home/z/my-project/src/app/page.tsx` to improve styling with a polished, professional B2B tech aesthetic matching the PropComply AI + VerifyMe Global brand identity.
+
+### Changes Made
+
+1. **Logo Update**: Replaced all shield icon + text logo instances with `<img src="/logo.png" />` including:
+   - Header logo
+   - Desktop sidebar top logo
+   - Mobile menu sidebar logo
+   - Footer logo (with `brightness-0 invert` for visibility on dark background)
+
+2. **Header Styling**:
+   - Changed from `bg-white/80 backdrop-blur-md` to solid white with `border-b-2 border-[#00A79D]/40 shadow-sm`
+   - Increased height from `h-14` to `h-16`
+   - Updated mobile menu button and notification button to use navy color (`text-[#002E5D]`)
+   - User name now displays in navy color
+   - Avatar border uses teal accent color
+
+3. **Desktop Sidebar**:
+   - Changed from `bg-white/50 border-r` to `bg-[#002E5D]` with gradient overlay (`from-[#002E5D] via-[#003A6B] to-[#001F40]`)
+   - Active state: `bg-[#00A79D] text-white` with shadow (was `bg-emerald-50 text-emerald-700`)
+   - Inactive state: `text-white/60 hover:bg-white/10 hover:text-white` (was `text-muted-foreground hover:bg-muted/60`)
+   - Active dot indicator changed from `bg-emerald-500` to `bg-white`
+   - Sidebar footer uses `border-white/10` with `text-white/60` buttons
+   - Version text uses `text-white/40`
+   - Added logo at top of sidebar with `border-b border-white/10` separator
+
+4. **Mobile Menu**:
+   - Changed from `bg-white` to `bg-[#002E5D]` matching desktop sidebar
+   - Updated `top-14` to `top-16` to match new header height
+   - Added logo at top of mobile sidebar
+   - Active/inactive states match desktop sidebar styling
+   - User info uses white text with teal avatar fallback
+   - Sign out button styled for dark background: `text-red-400 hover:text-red-300 hover:bg-red-500/10 border-white/10`
+
+5. **Footer**:
+   - Changed from `bg-white/60` simple footer to `bg-[#002E5D]` multi-column substantial footer
+   - Added logo with `brightness-0 invert` for white rendering
+   - 4-column grid layout: Brand, Regulatory Compliance, Platform, Legal
+   - Regulatory compliance links: UK GDPR, UK MLR 2017, FCA Compliance, Immigration Act 2014
+   - Platform links: Identity Verification, Compliance Automation, Risk Intelligence, Property Intelligence
+   - Legal links: Privacy Policy, Terms of Service, Data Processing, Cookie Policy
+   - All links use `text-white/50 hover:text-[#00A79D]` hover effect with ExternalLink icons
+   - Bottom bar with copyright, trust badge, and regulatory references
+   - Footer properly uses `mt-auto` for sticky-to-bottom behavior
+
+6. **Section Header**:
+   - Added teal left border accent: `border-l-4 border-[#00A79D] pl-4`
+   - Increased padding from `py-4` to `py-5`
+   - Subtitle now has `mt-1.5 pl-4` to align with bordered title
+
+7. **Color Updates (emerald → teal for primary accents)**:
+   - Loading spinner: `border-teal-500/30 border-t-teal-500` → `border-[#00A79D]/30 border-t-[#00A79D]`
+   - Search bar focus: `focus:border-teal-500 focus:ring-teal-500/20` → `focus:border-[#00A79D] focus:ring-[#00A79D]/20`
+   - Dropdown role badge: Now uses `#00A79D` brand teal
+   - Kept emerald (#10b981) for success states in nav section colors
+
+8. **Added Import**: `ExternalLink` from lucide-react for footer regulatory links
+
+### Files Modified
+- `/home/z/my-project/src/app/page.tsx` - Complete styling overhaul
+
+### Verification
+- `bun run lint` passes with 0 errors
+- Dev server compiles successfully
+- All existing functionality preserved (navigation, section switching, role-based access, sign out, state management)
+- Component remains 'use client'
+- Footer is sticky to bottom via `mt-auto` and `min-h-screen flex flex-col`
+
+## Task 2: Landing Page Component
+**Agent**: landing-page-agent
+**Date**: 2026-03-05
+**Status**: ✅ Completed
+
+### Files Created/Modified
+
+1. **`/home/z/my-project/src/components/platform/LandingPage.tsx`** — Comprehensive new landing page component replacing LoginPage.tsx with all sections from Layout.jpg design:
+   - **Sticky Navigation Bar**: Logo image (`/logo.png`) with "PropComply AI + VerifyMe Global" text, 6 menu items (Home, Platform, Pricing, About, Compliance, Resources), "Request a Demo" button (navy bg), "Login" button (outline), mobile hamburger menu with full dropdown
+   - **Hero Section**: Light mint/teal gradient background, Shield + Globe icon imagery, headline "The Trust Infrastructure for Cross-Border Property", sub-headline with platform description, "Get Started" (navy) and "Book Demo" (outline) CTAs
+   - **Statistics Bar**: 4 stat cards on navy background — £10,000 penalty, 6 compliance frameworks, 8 platform modules, 99.9% uptime
+   - **Compliance Gap Section** ("Nobody Solves This"): Two-column layout with 3 problem statements (Fragmented Identity, Manual Compliance, Zero Cross-Border Trust) on left, Trust Ladder visualization (5 steps from Self-Declared to Government Verified) on right
+   - **Trust Infrastructure Section**: "A New Category: Trust Infrastructure" with 3 feature cards (Identity Verified, Right to Rent Certified, Compliance Focused) with green checkmark icons
+   - **Platform Modules Section**: "8 Integrated Platform Modules" in 2x4 grid — Identity & Trust, Compliance Automation, Risk Intelligence, Property Intelligence, Right to Rent, Partner Ecosystem, AI Assistant, Workflow Engine
+   - **How It Works Section**: 3-step flow with connecting lines — Verify Identity, Build Trust Profile, Access Properties
+   - **Pricing Section**: 3 tiers — Starter (£99/mo), Professional (£299/mo, Popular), Enterprise (Custom)
+   - **Regulatory Compliance Section**: 4 badges — UK GDPR, UK MLR 2017, FCA Guidance, Immigration Act 2014
+   - **CTA Footer**: Navy background with "Ready to Transform Cross-Border Property Compliance?" and footer links
+   - **Login Modal**: Full dialog with email/password fields, demo account quick-select, error handling, loading states
+
+2. **`/home/z/my-project/src/app/page.tsx`** — Updated import from LoginPage to LandingPage and component usage `<LandingPage />`
+
+### Color Scheme Applied
+- Primary Navy: #002E5D (buttons, nav, footer, headings)
+- Primary Teal: #00A79D (accents, highlights)
+- Mint Green: #10b981 (success, verified indicators)
+- Light background: #f8fffe (alternate sections)
+- Dark gray: #374151 (body text)
+
+### Technical Details
+- Uses 'use client' directive
+- Framer Motion animations (scroll-triggered AnimatedSection and StaggerChild components)
+- Lucide icons throughout
+- shadcn/ui components (Button, Card, Badge, Dialog, Input, Separator)
+- ROLE_DEFINITIONS from @/lib/rbac for demo account display
+- signIn from next-auth/react for authentication
+- Responsive design with mobile-first Tailwind breakpoints
+- Logo referenced as /logo.png in img tag
+---
+Task ID: 1
+Agent: main
+Task: Copy logo.png to public folder
+
+Work Log:
+- Copied /home/z/my-project/upload/logo.png to /home/z/my-project/public/logo.png
+
+Stage Summary:
+- Logo is now available at /logo.png for use across the app
+
+---
+Task ID: 2
+Agent: full-stack-developer (subagent)
+Task: Create new public landing page matching Layout.jpg design
+
+Work Log:
+- Created /home/z/my-project/src/components/platform/LandingPage.tsx (920 lines)
+- 10 sections matching Layout.jpg: Nav bar, Hero, Statistics, Compliance Gap, Trust Infrastructure, Platform Modules, How It Works, Pricing, Regulatory Compliance, CTA Footer
+- Login modal with email/password fields and demo account quick-select
+- Used framer-motion scroll-triggered animations
+- Color scheme: Navy #002E5D, Teal #00A79D, Mint #10b981
+- Updated page.tsx to import LandingPage instead of LoginPage
+
+Stage Summary:
+- New LandingPage.tsx replaces LoginPage.tsx for public-facing marketing website
+- Login dialog integrated with NextAuth signIn
+- All 8 demo accounts available in login modal
+
+---
+Task ID: 3
+Agent: full-stack-developer (subagent)
+Task: Update dashboard layout with new logo, improved header/sidebar/footer styling
+
+Work Log:
+- Updated page.tsx with navy sidebar (#002E5D) and teal active states (#00A79D)
+- Replaced shield icon logo with logo.png image in header, sidebar, and footer
+- Header: h-16, teal accent border, improved search bar styling
+- Sidebar: Navy gradient background, teal active items, white text
+- Footer: Navy background with 4 columns (Brand, Regulatory Compliance, Platform, Legal)
+- Section headers: Teal left border accent
+- All emerald primary accents replaced with brand teal
+- Lint check passes
+
+Stage Summary:
+- Dashboard has professional B2B aesthetic with navy/teal color scheme
+- Logo.png used throughout the app
+- Multi-column footer with regulatory compliance links
+- Responsive mobile layout works correctly
+- Sign out redirects to landing page

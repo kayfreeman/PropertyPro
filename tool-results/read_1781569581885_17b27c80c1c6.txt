@@ -1,0 +1,571 @@
+     1→'use client';
+     2→
+     3→import { useState } from 'react';
+     4→import { useSession, signOut } from 'next-auth/react';
+     5→import { motion, AnimatePresence } from 'framer-motion';
+     6→import {
+     7→  LayoutDashboard,
+     8→  ShieldCheck,
+     9→  FileCheck,
+    10→  AlertTriangle,
+    11→  Building2,
+    12→  Handshake,
+    13→  Bot,
+    14→  Menu,
+    15→  X,
+    16→  ChevronLeft,
+    17→  ChevronRight,
+    18→  Bell,
+    19→  Search,
+    20→  Shield,
+    21→  Settings2,
+    22→  LogOut,
+    23→  User,
+    24→  ChevronDown,
+    25→  ExternalLink,
+    26→} from 'lucide-react';
+    27→import { Button } from '@/components/ui/button';
+    28→import { Badge } from '@/components/ui/badge';
+    29→import { Separator } from '@/components/ui/separator';
+    30→import { ScrollArea } from '@/components/ui/scroll-area';
+    31→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    32→import {
+    33→  DropdownMenu,
+    34→  DropdownMenuContent,
+    35→  DropdownMenuItem,
+    36→  DropdownMenuLabel,
+    37→  DropdownMenuSeparator,
+    38→  DropdownMenuTrigger,
+    39→} from '@/components/ui/dropdown-menu';
+    40→import DashboardOverview from '@/components/platform/DashboardOverview';
+    41→import IdentityTrust from '@/components/platform/IdentityTrust';
+    42→import ComplianceAutomation from '@/components/platform/ComplianceAutomation';
+    43→import RiskIntelligence from '@/components/platform/RiskIntelligence';
+    44→import PropertyIntelligence from '@/components/platform/PropertyIntelligence';
+    45→import PartnerEcosystem from '@/components/platform/PartnerEcosystem';
+    46→import AIAssistant from '@/components/platform/AIAssistant';
+    47→import Settings from '@/components/platform/Settings';
+    48→import LandingPage from '@/components/platform/LandingPage';
+    49→import { canAccessSection, getRoleDefinition, type UserRole } from '@/lib/rbac';
+    50→
+    51→type SectionId = 'dashboard' | 'identity' | 'compliance' | 'risk' | 'property' | 'partners' | 'ai-assistant' | 'settings';
+    52→
+    53→interface NavSection {
+    54→  id: SectionId;
+    55→  label: string;
+    56→  icon: React.ReactNode;
+    57→  description: string;
+    58→  color: string;
+    59→}
+    60→
+    61→const ALL_NAV_SECTIONS: NavSection[] = [
+    62→  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="size-5" />, description: 'Platform overview & analytics', color: '#10b981' },
+    63→  { id: 'identity', label: 'Identity & Trust', icon: <ShieldCheck className="size-5" />, description: 'Verification & trust ladder', color: '#0d9488' },
+    64→  { id: 'compliance', label: 'Compliance', icon: <FileCheck className="size-5" />, description: 'AML/KYC/CDD automation', color: '#06b6d4' },
+    65→  { id: 'risk', label: 'Risk Intelligence', icon: <AlertTriangle className="size-5" />, description: 'Risk scoring & fraud detection', color: '#f59e0b' },
+    66→  { id: 'property', label: 'Property', icon: <Building2 className="size-5" />, description: 'Property compliance & intelligence', color: '#8b5cf6' },
+    67→  { id: 'partners', label: 'Partners', icon: <Handshake className="size-5" />, description: 'Ecosystem integrations', color: '#ec4899' },
+    68→  { id: 'ai-assistant', label: 'AI Assistant', icon: <Bot className="size-5" />, description: 'Compliance AI chatbot', color: '#6366f1' },
+    69→  { id: 'settings', label: 'Settings', icon: <Settings2 className="size-5" />, description: 'Profile, security & platform config', color: '#64748b' },
+    70→];
+    71→
+    72→const SECTION_META: Record<string, { title: string; subtitle: string }> = {
+    73→  dashboard: { title: 'Platform Dashboard', subtitle: 'Real-time overview of identity verification, compliance, and risk metrics' },
+    74→  identity: { title: 'Identity & Trust', subtitle: 'Trust Ladder verification framework with progressive identity assurance' },
+    75→  compliance: { title: 'Compliance Automation', subtitle: 'AML/KYC/CDD/EDD workflows, screening, and regulatory compliance monitoring' },
+    76→  risk: { title: 'Risk Intelligence', subtitle: 'Risk scoring, fraud detection, trust assessment, and explainability analytics' },
+    77→  property: { title: 'Property Intelligence', subtitle: 'Property compliance, Right to Rent, guarantor replacement & market intelligence' },
+    78→  partners: { title: 'Partner Ecosystem', subtitle: 'Partner integrations, referral pipeline & banking referral services' },
+    79→  'ai-assistant': { title: 'AI Compliance Assistant', subtitle: 'Regulatory guidance chatbot powered by compliance knowledge base' },
+    80→  settings: { title: 'Settings', subtitle: 'Manage your profile, security, notifications, privacy, and platform configuration' },
+    81→};
+    82→
+    83→export default function Home() {
+    84→  const { data: session, status } = useSession();
+    85→  const [activeSection, setActiveSection] = useState<SectionId>('dashboard');
+    86→  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    87→  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    88→  const [isSigningOut, setIsSigningOut] = useState(false);
+    89→  const [settingsTab, setSettingsTab] = useState('profile');
+    90→  const [searchQuery, setSearchQuery] = useState('');
+    91→
+    92→  const handleSignOut = async () => {
+    93→    setIsSigningOut(true);
+    94→    try {
+    95→      await signOut({ redirect: false });
+    96→      // Reload the current URL (preserves gateway/proxy URL in sandbox)
+    97→      window.location.reload();
+    98→    } catch {
+    99→      setIsSigningOut(false);
+   100→    }
+   101→  };
+   102→
+   103→  // Get user role and filtered sections
+   104→  const userRole = (session?.user?.role || 'tenant') as UserRole;
+   105→  const roleDef = getRoleDefinition(userRole);
+   106→
+   107→  // Filter nav sections based on role
+   108→  const navSections = ALL_NAV_SECTIONS.filter(s => canAccessSection(userRole, s.id));
+   109→
+   110→  // Derive valid active section — fallback to first accessible if current is not accessible
+   111→  const validSection = canAccessSection(userRole, activeSection) ? activeSection : (navSections[0]?.id || 'dashboard') as SectionId;
+   112→
+   113→  const handleSectionChange = (section: SectionId, tab?: string) => {
+   114→    setActiveSection(section);
+   115→    setMobileMenuOpen(false);
+   116→    if (section === 'settings' && tab) {
+   117→      setSettingsTab(tab);
+   118→    }
+   119→  };
+   120→
+   121→  // Show login page if not authenticated
+   122→  if (status === 'loading') {
+   123→    return (
+   124→      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-teal-50/30">
+   125→        <div className="flex flex-col items-center gap-4">
+   126→          <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-12 w-auto animate-pulse" />
+   127→          <div className="flex items-center gap-2 text-muted-foreground">
+   128→            <div className="size-4 border-2 border-[#00A79D]/30 border-t-[#00A79D] rounded-full animate-spin" />
+   129→            <span className="text-sm">Loading platform...</span>
+   130→          </div>
+   131→        </div>
+   132→      </div>
+   133→    );
+   134→  }
+   135→
+   136→  if (!session) {
+   137→    return <LandingPage />;
+   138→  }
+   139→
+   140→  return (
+   141→    <div className="min-h-screen flex flex-col bg-background">
+   142→      {/* Header */}
+   143→      <header className="sticky top-0 z-50 bg-white border-b-2 border-[#00A79D]/40 shadow-sm">
+   144→        <div className="flex items-center justify-between h-16 px-4 sm:px-6">
+   145→          <div className="flex items-center gap-3">
+   146→            {/* Mobile menu button */}
+   147→            <Button
+   148→              variant="ghost"
+   149→              size="icon"
+   150→              className="lg:hidden text-[#002E5D] hover:text-[#002E5D] hover:bg-[#002E5D]/5"
+   151→              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+   152→              aria-label="Toggle menu"
+   153→            >
+   154→              {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+   155→            </Button>
+   156→
+   157→            {/* Logo */}
+   158→            <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-9 w-auto" />
+   159→          </div>
+   160→
+   161→          {/* Center - Search (desktop) */}
+   162→          <div className="hidden md:flex flex-1 max-w-md mx-6">
+   163→            <div className="relative w-full">
+   164→              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   165→              <input
+   166→                type="text"
+   167→                placeholder="Search identities, compliance, properties..."
+   168→                className="h-9 w-full rounded-lg border bg-muted/50 pl-9 pr-4 text-sm placeholder:text-muted-foreground focus:border-[#00A79D] focus:outline-none focus:ring-2 focus:ring-[#00A79D]/20 transition-colors"
+   169→                value={searchQuery}
+   170→                onChange={(e) => {
+   171→                  setSearchQuery(e.target.value);
+   172→                  if (e.target.value.trim()) {
+   173→                    handleSectionChange('identity');
+   174→                  }
+   175→                }}
+   176→              />
+   177→              {searchQuery && (
+   178→                <button
+   179→                  onClick={() => setSearchQuery('')}
+   180→                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+   181→                >
+   182→                  <X className="size-3.5" />
+   183→                </button>
+   184→              )}
+   185→            </div>
+   186→          </div>
+   187→
+   188→          {/* Right section */}
+   189→          <div className="flex items-center gap-2">
+   190→            {/* Role Badge */}
+   191→            <Badge
+   192→              variant="outline"
+   193→              className="text-[10px] hidden sm:flex"
+   194→              style={{ borderColor: roleDef.color + '40', color: roleDef.color, backgroundColor: roleDef.bgColor }}
+   195→            >
+   196→              {roleDef.name}
+   197→            </Badge>
+   198→
+   199→            {/* Notifications */}
+   200→            <Button variant="ghost" size="icon" className="relative text-[#002E5D] hover:text-[#002E5D] hover:bg-[#002E5D]/5" aria-label="Notifications" onClick={() => handleSectionChange('settings')}>
+   201→              <Bell className="size-5" />
+   202→              <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">3</span>
+   203→            </Button>
+   204→
+   205→            {/* User Menu */}
+   206→            <DropdownMenu>
+   207→              <DropdownMenuTrigger asChild>
+   208→                <button className="flex items-center gap-1.5 rounded-lg p-1 hover:bg-[#002E5D]/5 transition-colors">
+   209→                  <Avatar className="size-8 border-2" style={{ borderColor: '#00A79D' + '60' }}>
+   210→                    <AvatarFallback className="text-xs font-bold" style={{ backgroundColor: roleDef.bgColor, color: roleDef.color }}>
+   211→                      {session.user.avatar || '??'}
+   212→                    </AvatarFallback>
+   213→                  </Avatar>
+   214→                  <div className="hidden md:block text-left">
+   215→                    <p className="text-xs font-semibold leading-tight text-[#002E5D]">{session.user.name}</p>
+   216→                    <p className="text-[10px] text-muted-foreground leading-tight">{session.user.jobTitle || roleDef.name}</p>
+   217→                  </div>
+   218→                  <ChevronDown className="size-3 text-[#002E5D]/60 hidden md:block" />
+   219→                </button>
+   220→              </DropdownMenuTrigger>
+   221→              <DropdownMenuContent align="end" className="w-56">
+   222→                <DropdownMenuLabel className="font-normal">
+   223→                  <div className="flex flex-col space-y-1">
+   224→                    <p className="text-sm font-medium">{session.user.name}</p>
+   225→                    <p className="text-xs text-muted-foreground">{session.user.email}</p>
+   226→                    <Badge
+   227→                      variant="outline"
+   228→                      className="text-[9px] w-fit"
+   229→                      style={{ borderColor: '#00A79D' + '40', color: '#00A79D', backgroundColor: '#00A79D' + '10' }}
+   230→                    >
+   231→                      {roleDef.name} &middot; Level {roleDef.level}
+   232→                    </Badge>
+   233→                  </div>
+   234→                </DropdownMenuLabel>
+   235→                <DropdownMenuSeparator />
+   236→                <DropdownMenuItem onClick={() => handleSectionChange('settings', 'profile')} className="cursor-pointer">
+   237→                  <User className="mr-2 size-4" />
+   238→                  Profile & Settings
+   239→                </DropdownMenuItem>
+   240→                <DropdownMenuItem onClick={() => handleSectionChange('settings', 'security')} className="cursor-pointer">
+   241→                  <Shield className="mr-2 size-4" />
+   242→                  Security
+   243→                </DropdownMenuItem>
+   244→                <DropdownMenuSeparator />
+   245→                <DropdownMenuItem
+   246→                  onClick={handleSignOut}
+   247→                  disabled={isSigningOut}
+   248→                  className="cursor-pointer text-red-600 focus:text-red-600"
+   249→                >
+   250→                  {isSigningOut ? (
+   251→                    <div className="mr-2 size-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+   252→                  ) : (
+   253→                    <LogOut className="mr-2 size-4" />
+   254→                  )}
+   255→                  {isSigningOut ? 'Signing out...' : 'Sign Out'}
+   256→                </DropdownMenuItem>
+   257→              </DropdownMenuContent>
+   258→            </DropdownMenu>
+   259→          </div>
+   260→        </div>
+   261→      </header>
+   262→
+   263→      <div className="flex flex-1">
+   264→        {/* Desktop Sidebar */}
+   265→        <aside className="hidden lg:flex flex-col bg-[#002E5D] relative transition-all duration-300" style={{ width: sidebarCollapsed ? '64px' : '240px' }}>
+   266→          {/* Gradient overlay */}
+   267→          <div className="absolute inset-0 bg-gradient-to-b from-[#002E5D] via-[#003A6B] to-[#001F40] pointer-events-none" />
+   268→
+   269→          {/* Logo at top of sidebar */}
+   270→          <div className="relative z-10 px-3 py-4 border-b border-white/10">
+   271→            <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className={`w-auto ${sidebarCollapsed ? 'h-7 mx-auto' : 'h-8'}`} />
+   272→          </div>
+   273→
+   274→          <ScrollArea className="flex-1 relative z-10 py-3">
+   275→            <nav className="space-y-1 px-2">
+   276→              {navSections.map((section) => {
+   277→                const isActive = validSection === section.id;
+   278→                return (
+   279→                  <button
+   280→                    key={section.id}
+   281→                    onClick={() => handleSectionChange(section.id)}
+   282→                    className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group ${
+   283→                      isActive
+   284→                        ? 'bg-[#00A79D] text-white shadow-md shadow-[#00A79D]/20'
+   285→                        : 'text-white/60 hover:bg-white/10 hover:text-white'
+   286→                    }`}
+   287→                    title={sidebarCollapsed ? section.label : undefined}
+   288→                  >
+   289→                    <span className={`shrink-0 transition-colors ${isActive ? 'text-white' : 'text-white/60 group-hover:text-white'}`}>
+   290→                      {section.icon}
+   291→                    </span>
+   292→                    {!sidebarCollapsed && (
+   293→                      <span className="truncate">{section.label}</span>
+   294→                    )}
+   295→                    {isActive && !sidebarCollapsed && (
+   296→                      <span className="ml-auto size-1.5 rounded-full bg-white" />
+   297→                    )}
+   298→                  </button>
+   299→                );
+   300→              })}
+   301→            </nav>
+   302→          </ScrollArea>
+   303→
+   304→          {/* Sidebar footer */}
+   305→          <div className="relative z-10 border-t border-white/10 p-3">
+   306→            <Button
+   307→              variant="ghost"
+   308→              size="sm"
+   309→              className="w-full justify-center text-white/60 hover:text-white hover:bg-white/10"
+   310→              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+   311→            >
+   312→              {sidebarCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+   313→            </Button>
+   314→            {!sidebarCollapsed && (
+   315→              <div className="mt-2 text-center">
+   316→                <p className="text-[10px] text-white/40">Trust Infrastructure v1.0.0</p>
+   317→              </div>
+   318→            )}
+   319→          </div>
+   320→        </aside>
+   321→
+   322→        {/* Mobile Menu Overlay */}
+   323→        <AnimatePresence>
+   324→          {mobileMenuOpen && (
+   325→            <>
+   326→              <motion.div
+   327→                initial={{ opacity: 0 }}
+   328→                animate={{ opacity: 1 }}
+   329→                exit={{ opacity: 0 }}
+   330→                className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+   331→                onClick={() => setMobileMenuOpen(false)}
+   332→              />
+   333→              <motion.aside
+   334→                initial={{ x: -280 }}
+   335→                animate={{ x: 0 }}
+   336→                exit={{ x: -280 }}
+   337→                transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+   338→                className="fixed left-0 top-16 bottom-0 z-50 w-[280px] bg-[#002E5D] shadow-xl lg:hidden flex flex-col"
+   339→              >
+   340→                {/* Logo at top of mobile sidebar */}
+   341→                <div className="px-4 py-3 border-b border-white/10">
+   342→                  <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-8 w-auto" />
+   343→                </div>
+   344→
+   345→                <ScrollArea className="flex-1 py-3">
+   346→                  <nav className="space-y-1 px-3">
+   347→                    {navSections.map((section) => {
+   348→                      const isActive = validSection === section.id;
+   349→                      return (
+   350→                        <button
+   351→                          key={section.id}
+   352→                          onClick={() => handleSectionChange(section.id)}
+   353→                          className={`w-full flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-all duration-200 ${
+   354→                            isActive
+   355→                              ? 'bg-[#00A79D] text-white shadow-md shadow-[#00A79D]/20'
+   356→                              : 'text-white/60 hover:bg-white/10 hover:text-white'
+   357→                          }`}
+   358→                        >
+   359→                          <span className={isActive ? 'text-white' : 'text-white/60'}>{section.icon}</span>
+   360→                          <div className="text-left">
+   361→                            <div className={isActive ? 'text-white' : 'text-white/60'}>{section.label}</div>
+   362→                            <div className={`text-[10px] font-normal ${isActive ? 'text-white/80' : 'text-white/40'}`}>{section.description}</div>
+   363→                          </div>
+   364→                          {isActive && (
+   365→                            <span className="ml-auto size-1.5 rounded-full bg-white" />
+   366→                          )}
+   367→                        </button>
+   368→                      );
+   369→                    })}
+   370→                  </nav>
+   371→                </ScrollArea>
+   372→
+   373→                {/* Mobile user info & logout */}
+   374→                <div className="border-t border-white/10 p-4">
+   375→                  <div className="flex items-center gap-3 mb-3">
+   376→                    <Avatar className="size-8 border border-white/20">
+   377→                      <AvatarFallback className="text-xs font-bold" style={{ backgroundColor: '#00A79D', color: 'white' }}>
+   378→                        {session.user.avatar || '??'}
+   379→                      </AvatarFallback>
+   380→                    </Avatar>
+   381→                    <div className="min-w-0">
+   382→                      <p className="text-sm font-medium truncate text-white">{session.user.name}</p>
+   383→                      <p className="text-[10px] text-white/50 truncate">{session.user.email}</p>
+   384→                    </div>
+   385→                  </div>
+   386→                  <Button
+   387→                    variant="outline"
+   388→                    size="sm"
+   389→                    className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10 border-white/10"
+   390→                    onClick={handleSignOut}
+   391→                    disabled={isSigningOut}
+   392→                  >
+   393→                    {isSigningOut ? (
+   394→                      <div className="size-4 mr-2 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
+   395→                    ) : (
+   396→                      <LogOut className="size-4 mr-2" />
+   397→                    )}
+   398→                    {isSigningOut ? 'Signing out...' : 'Sign Out'}
+   399→                  </Button>
+   400→                  <p className="text-[10px] text-white/30 mt-2">PropComply AI + VerifyMe Global v1.0.0</p>
+   401→                </div>
+   402→              </motion.aside>
+   403→            </>
+   404→          )}
+   405→        </AnimatePresence>
+   406→
+   407→        {/* Main Content */}
+   408→        <main className="flex-1 min-w-0">
+   409→          {/* Section Header */}
+   410→          <div className="border-b bg-white/60 backdrop-blur-sm px-4 sm:px-6 py-5">
+   411→            <div className="max-w-7xl mx-auto">
+   412→              <h2 className="text-xl sm:text-2xl font-bold tracking-tight border-l-4 border-[#00A79D] pl-4">
+   413→                {SECTION_META[validSection]?.title}
+   414→              </h2>
+   415→              <p className="text-sm text-muted-foreground mt-1.5 pl-4">
+   416→                {SECTION_META[validSection]?.subtitle}
+   417→              </p>
+   418→            </div>
+   419→          </div>
+   420→
+   421→          {/* Section Content */}
+   422→          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+   423→            <AnimatePresence mode="wait">
+   424→              {validSection === 'dashboard' && (
+   425→                <motion.div key="dashboard" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   426→                  <DashboardOverview onNavigate={handleSectionChange} />
+   427→                </motion.div>
+   428→              )}
+   429→              {validSection === 'identity' && (
+   430→                <motion.div key="identity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   431→                  <IdentityTrust searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
+   432→                </motion.div>
+   433→              )}
+   434→              {validSection === 'compliance' && (
+   435→                <motion.div key="compliance" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   436→                  <ComplianceAutomation />
+   437→                </motion.div>
+   438→              )}
+   439→              {validSection === 'risk' && (
+   440→                <motion.div key="risk" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   441→                  <RiskIntelligence />
+   442→                </motion.div>
+   443→              )}
+   444→              {validSection === 'property' && (
+   445→                <motion.div key="property" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   446→                  <PropertyIntelligence onNavigate={handleSectionChange} />
+   447→                </motion.div>
+   448→              )}
+   449→              {validSection === 'partners' && (
+   450→                <motion.div key="partners" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   451→                  <PartnerEcosystem />
+   452→                </motion.div>
+   453→              )}
+   454→              {validSection === 'ai-assistant' && (
+   455→                <motion.div key="ai-assistant" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   456→                  <AIAssistant />
+   457→                </motion.div>
+   458→              )}
+   459→              {validSection === 'settings' && (
+   460→                <motion.div key={`settings-${settingsTab}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+   461→                  <Settings initialTab={settingsTab} />
+   462→                </motion.div>
+   463→              )}
+   464→            </AnimatePresence>
+   465→          </div>
+   466→        </main>
+   467→      </div>
+   468→
+   469→      {/* Footer */}
+   470→      <footer className="bg-[#002E5D] mt-auto">
+   471→        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+   472→          {/* Main footer content */}
+   473→          <div className="py-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+   474→            {/* Brand column */}
+   475→            <div className="sm:col-span-2 lg:col-span-1">
+   476→              <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-8 w-auto mb-3 brightness-0 invert" />
+   477→              <p className="text-white/50 text-xs leading-relaxed">
+   478→                Trust Infrastructure Platform for identity verification, compliance automation, and risk intelligence.
+   479→              </p>
+   480→            </div>
+   481→
+   482→            {/* Regulatory Compliance */}
+   483→            <div>
+   484→              <h4 className="text-white/80 text-xs font-semibold uppercase tracking-wider mb-3">Regulatory Compliance</h4>
+   485→              <ul className="space-y-2">
+   486→                <li>
+   487→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors flex items-center gap-1.5">
+   488→                    <ExternalLink className="size-3" />
+   489→                    UK GDPR
+   490→                  </a>
+   491→                </li>
+   492→                <li>
+   493→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors flex items-center gap-1.5">
+   494→                    <ExternalLink className="size-3" />
+   495→                    UK MLR 2017
+   496→                  </a>
+   497→                </li>
+   498→                <li>
+   499→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors flex items-center gap-1.5">
+   500→                    <ExternalLink className="size-3" />
+   501→                    FCA Compliance
+   502→                  </a>
+   503→                </li>
+   504→                <li>
+   505→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors flex items-center gap-1.5">
+   506→                    <ExternalLink className="size-3" />
+   507→                    Immigration Act 2014
+   508→                  </a>
+   509→                </li>
+   510→              </ul>
+   511→            </div>
+   512→
+   513→            {/* Platform */}
+   514→            <div>
+   515→              <h4 className="text-white/80 text-xs font-semibold uppercase tracking-wider mb-3">Platform</h4>
+   516→              <ul className="space-y-2">
+   517→                <li>
+   518→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Identity Verification</a>
+   519→                </li>
+   520→                <li>
+   521→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Compliance Automation</a>
+   522→                </li>
+   523→                <li>
+   524→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Risk Intelligence</a>
+   525→                </li>
+   526→                <li>
+   527→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Property Intelligence</a>
+   528→                </li>
+   529→              </ul>
+   530→            </div>
+   531→
+   532→            {/* Legal */}
+   533→            <div>
+   534→              <h4 className="text-white/80 text-xs font-semibold uppercase tracking-wider mb-3">Legal</h4>
+   535→              <ul className="space-y-2">
+   536→                <li>
+   537→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Privacy Policy</a>
+   538→                </li>
+   539→                <li>
+   540→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Terms of Service</a>
+   541→                </li>
+   542→                <li>
+   543→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Data Processing</a>
+   544→                </li>
+   545→                <li>
+   546→                  <a href="#" className="text-white/50 text-xs hover:text-[#00A79D] transition-colors">Cookie Policy</a>
+   547→                </li>
+   548→              </ul>
+   549→            </div>
+   550→          </div>
+   551→
+   552→          {/* Bottom bar */}
+   553→          <div className="border-t border-white/10 py-3">
+   554→            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/40">
+   555→              <span>&copy; {new Date().getFullYear()} PropComply AI + VerifyMe Global. All rights reserved.</span>
+   556→              <div className="flex items-center gap-3">
+   557→                <span className="flex items-center gap-1.5">
+   558→                  <Shield className="size-3" />
+   559→                  Trust Infrastructure Platform
+   560→                </span>
+   561→                <Separator orientation="vertical" className="h-3 bg-white/20" />
+   562→                <span>UK GDPR &middot; UK MLR 2017 &middot; FCA &middot; Immigration Act 2014</span>
+   563→              </div>
+   564→            </div>
+   565→          </div>
+   566→        </div>
+   567→      </footer>
+   568→    </div>
+   569→  );
+   570→}
+   571→

@@ -1,0 +1,836 @@
+     1→# PropComply AI + VerifyMe Global - Worklog
+     2→
+     3→## Task 2-b: Backend (Seed Script + API Routes)
+     4→**Agent**: backend-agent
+     5→**Date**: 2026-06-06
+     6→**Status**: ✅ Completed
+     7→
+     8→### Files Created
+     9→
+    10→1. **`/home/z/my-project/prisma/seed.ts`** - Comprehensive seed script with realistic demo data:
+    11→   - 8 Identity Profiles (UK, EU, non-EU nationals with varying trust levels 0-5)
+    12→   - 18 Identity Credentials (passport, national_id, biometric, banking, employer, visa, government, etc.)
+    13→   - 12 Identity Evidence records (document, biometric, institutional, behavioral, government)
+    14→   - 15 Verification Records (document, biometric_face, liveness, open_banking, income, employer, government)
+    15→   - 26 Compliance Checks across all types (aml, kyc, cdd, edd, sanctions, pep, adverse_media, right_to_rent)
+    16→   - 8 Risk Scores with detailed risk factor breakdowns
+    17→   - 4 Fraud Alerts (critical sanctions match, suspicious behavior, document fraud, false positive)
+    18→   - 3 UK Properties (residential, HMO)
+    19→   - 5 Property Applications (approved, under_review, submitted, rejected)
+    20→   - 4 Partners (Barclays, AXA, Halifax, Wise)
+    21→   - 6 Partner Referrals (banking, insurance, mortgage, remittance)
+    22→   - 22 Audit Logs
+    23→   - 5 Consent Records
+    24→   - 3 Platform Config entries
+    25→
+    26→2. **`/home/z/my-project/src/app/api/dashboard/route.ts`** - Dashboard summary API
+    27→   - GET: Returns total profiles, verified count, pending verifications, compliance pass rate, avg trust score, risk distribution, recent activity, monthly verification trends, property/app/fraud/partner counts
+    28→
+    29→3. **`/home/z/my-project/src/app/api/identities/route.ts`** - Identities collection API
+    30→   - GET: All profiles with credentials, evidence, verifications, and counts
+    31→   - POST: Create new profile with validation, duplicate email check, and audit logging
+    32→
+    33→4. **`/home/z/my-project/src/app/api/identities/[id]/route.ts`** - Single identity API
+    34→   - GET: Full profile details including compliance, risk, property apps, and audit logs
+    35→   - PATCH: Update allowed fields with audit logging
+    36→
+    37→5. **`/home/z/my-project/src/app/api/compliance/route.ts`** - Compliance API
+    38→   - GET: All compliance checks with profile info + summary breakdowns (by status, type, risk rating)
+    39→   - POST: Create new compliance check with validation
+    40→
+    41→6. **`/home/z/my-project/src/app/api/risk/route.ts`** - Risk API
+    42→   - GET: Risk scores with profile info, fraud alerts with enriched related profile data, summary breakdowns
+    43→
+    44→7. **`/home/z/my-project/src/app/api/properties/route.ts`** - Properties API
+    45→   - GET: All properties with applications and applicant profiles, summary breakdowns
+    46→
+    47→8. **`/home/z/my-project/src/app/api/partners/route.ts`** - Partners API
+    48→   - GET: All partners with enriched referral data and profile info, summary breakdowns
+    49→
+    50→9. **`/home/z/my-project/src/app/api/audit/route.ts`** - Audit API
+    51→   - GET: Paginated audit logs with profile info (supports ?page=&limit= query params)
+    52→
+    53→### Package.json Update
+    54→- Added `"db:seed": "bun prisma/seed.ts"` script
+    55→
+    56→### Issues Resolved
+    57→- **FraudAlert relatedProfile**: `relatedProfileId` is a plain String field (not a Prisma relation), so manual profile lookup was implemented instead of `include`
+    58→- **PartnerReferral profile**: Same issue - `profileId` is a plain String?, so manual profile enrichment was used
+    59→
+    60→### Verification
+    61→- All 8 API endpoints return 200 with correct JSON data
+    62→- Lint passes with no errors
+    63→- Dev server running with no errors
+    64→
+    65→---
+    66→
+    67→## Task 3-a-ui: Layout Components (Header, Sidebar, Footer)
+    68→**Agent**: ui-agent
+    69→**Date**: 2026-06-06
+    70→**Status**: ✅ Completed
+    71→
+    72→### Files Created
+    73→
+    74→1. **`/home/z/my-project/src/components/platform/Header.tsx`** - Professional enterprise header component:
+    75→   - 'use client' directive with Framer Motion entrance animation
+    76→   - Left: Hamburger menu toggle (connected to Zustand store), ShieldCheck logo + "PropComply AI + VerifyMe Global" branding
+    77→   - Center: Decorative search bar with Search icon (hidden on mobile)
+    78→   - Right: Notification bell with badge count (3), Sun/Moon theme toggle, user avatar placeholder (JD initials)
+    79→   - Style: `sticky top-0 z-40`, `h-16`, white background with border-b
+    80→   - Responsive: Compact "PCAI" text on mobile, full branding on desktop, search hidden on small screens
+    81→
+    82→2. **`/home/z/my-project/src/components/platform/Sidebar.tsx`** - Professional sidebar navigation:
+    83→   - 'use client' directive with Framer Motion width transitions
+    84→   - Icon map for all 7 NAV_SECTIONS icons (LayoutDashboard, ShieldCheck, FileCheck, AlertTriangle, Building2, Handshake, Bot)
+    85→   - Top: "PC" branding badge with "PCAI / PropComply AI" text (collapsible)
+    86→   - Navigation list from NAV_SECTIONS with icon + label + active highlighting (`bg-emerald-50 text-emerald-700`)
+    87→   - Active section indicator with `layoutId` spring animation
+    88→   - Tooltip support when collapsed (shows label + description)
+    89→   - Collapse toggle (ChevronLeft/ChevronRight) hidden on mobile
+    90→   - Bottom: "Enterprise Platform" badge + "v1.0.0" version
+    91→   - Mobile: overlay with backdrop, closes on section change or outside click
+    92→   - Width: 256px expanded / 64px collapsed with smooth transition
+    93→   - Connected to `usePlatformStore` for `activeSection` and `sidebarOpen` state
+    94→
+    95→3. **`/home/z/my-project/src/components/platform/Footer.tsx`** - Professional enterprise footer:
+    96→   - 'use client' directive with Framer Motion fade-in
+    97→   - Left: "© 2024 PropComply AI + VerifyMe Global. All rights reserved."
+    98→   - Right: "Trust Infrastructure Platform v1.0.0"
+    99→   - Style: `mt-auto`, white bg, border-t, `py-3 px-6`, `text-sm text-muted-foreground`
+   100→   - Responsive: Stacks vertically on mobile
+   101→
+   102→4. **`/home/z/my-project/src/app/page.tsx`** - Updated to integrate all layout components:
+   103→   - Header at top, Sidebar on left, main content area, Footer at bottom
+   104→   - Main content area with responsive left margin (0 on mobile, 256/64 on desktop)
+   105→   - Section header with icon, title, and description based on active section
+   106→   - Placeholder widget grid (6 cards) for future content
+   107→   - `AnimatePresence` for smooth section transitions
+   108→   - `useEffect` + resize listener for responsive margin calculation
+   109→
+   110→### Verification
+   111→- Lint passes with no errors
+   112→- Dev server compiles successfully
+   113→- All components render correctly with proper styling
+   114→
+   115→---
+   116→
+   117→## Task 3-bc: Dashboard Overview & Identity Trust Components
+   118→**Agent**: dashboard-identity-agent
+   119→**Date**: 2026-06-06
+   120→**Status**: ✅ Completed
+   121→
+   122→### Files Created
+   123→
+   124→1. **`/home/z/my-project/src/components/platform/DashboardOverview.tsx`** - Enterprise dashboard overview:
+   125→   - 'use client' directive with Framer Motion staggered card entrance animations
+   126→   - **Top Metrics Row** (4 cards in responsive grid):
+   127→     - Total Identities (Users icon) — fetched from /api/dashboard
+   128→     - Verified Profiles (ShieldCheck icon) — fetched count
+   129→     - Compliance Rate (FileCheck icon) — percentage with Progress bar
+   130→     - Avg Trust Score (TrendingUp icon) — circular SVG indicator
+   131→     - Each card: emerald color scheme, icon in rounded bg, trend indicator "+X% this month"
+   132→   - **Charts Section** (2 columns):
+   133→     - Left: Monthly Verification Trends — Area chart (Recharts AreaChart with gradient fills, emerald/cyan colors, 12-month data)
+   134→     - Right: Compliance Distribution — Donut/Pie chart (Recharts PieChart with innerRadius, colored by check type — AML, KYC, CDD, EDD, Sanctions, PEP, Adverse Media, Right to Rent)
+   135→     - Both charts use shadcn ChartContainer/ChartTooltip/ChartLegend for consistent styling
+   136→   - **Risk Distribution** — Quick view grid with 4 risk categories (Low/Medium/High/Critical) with color-coded cards
+   137→   - **Recent Activity Section** — ScrollArea with max-h-64, action icons, description, timestamp, user, resource badge
+   138→   - **Quick Actions Row** — 4 decorative buttons (New Verification, Run Compliance Check, View Risk Alerts, Generate Report)
+   139→   - Data types: DashboardSummary, RiskDistribution, RecentActivityItem, MonthlyTrend, DashboardData, ComplianceData
+   140→   - Uses `useApi` hook for /api/dashboard and /api/compliance
+   141→
+   142→2. **`/home/z/my-project/src/components/platform/IdentityTrust.tsx`** - Identity verification & Trust Ladder:
+   143→   - 'use client' directive with Framer Motion animations
+   144→   - **Trust Ladder Visualization** (left column, xl:col-span-3):
+   145→     - Vertical stepped visualization showing all 6 trust levels (0-5) from TRUST_LEVELS
+   146→     - Each level: colored circle with level number, icon, name, description
+   147→     - Animated step-by-step reveal with custom staggered variants
+   148→     - Current selected profile's trust level highlighted with "Current Level" badge
+   149→     - Connected by vertical lines, colored green for achieved levels
+   150→     - Achieved levels get emphasized styling (border, shadow, background)
+   151→   - **Identity Profiles Table** (right section, xl:col-span-9):
+   152→     - Fetched from /api/identities
+   153→     - Columns: Name, Email, Trust Level (colored badge), Trust Score (mini progress bar), Status (colored badge), Nationality, Actions
+   154→     - Click row to select/deselect profile, highlights trust level on ladder
+   155→     - max-h-96 overflow-y-auto with ScrollArea
+   156→     - Trust level badges use TRUST_LEVELS colors
+   157→   - **Verification Workflow Panel** (shown when profile selected):
+   158→     - Displays each verification type with status icon (CheckCircle2, Clock, XCircle, AlertCircle)
+   159→     - Confidence score with Progress bar + percentage
+   160→     - "Start Verification" button for pending/in_progress items
+   161→     - ScrollArea with max-h-72
+   162→   - **Credential Cards** (shown when profile selected):
+   163→     - Grid of credential cards (2 columns on sm+)
+   164→     - Each: type icon, credential name, status badge, expiry date
+   165→     - Framer Motion scale animation on entrance
+   166→   - **Empty State** when no profile selected — ShieldCheck icon + "Select a Profile" prompt
+   167→   - AnimatePresence for smooth profile selection transitions
+   168→   - Uses `useApi` hook for /api/identities
+   169→
+   170→3. **`/home/z/my-project/src/app/page.tsx`** - Updated with full platform layout:
+   171→   - QueryClientProvider wrapper for TanStack Query
+   172→   - Collapsible sidebar with emerald accent styling
+   173→   - Navigation from NAV_SECTIONS with active highlighting
+   174→   - Top bar with section icon + title
+   175→   - AnimatePresence for section transitions
+   176→   - SECTION_COMPONENTS map routing 'dashboard' → DashboardOverview, 'identity' → IdentityTrust
+   177→   - PlaceholderSection component for unimplemented sections (Compliance, Risk, Property, Partners, AI Assistant)
+   178→   - Sidebar footer with platform status indicator
+   179→   - Platform status "All systems operational" with green pulse dot
+   180→
+   181→### Key Design Decisions
+   182→- Used shadcn ChartContainer/ChartTooltip/ChartLegend for Recharts integration (consistent with project patterns)
+   183→- Trust score circular indicator uses raw SVG for precise control
+   184→- Compliance distribution pie chart uses `innerRadius={60}` for donut effect with 3px padding between segments
+   185→- Risk distribution shown as color-coded cards rather than a chart for quick scanning
+   186→- Trust Ladder uses a 3/9 column split on xl screens for optimal proportions
+   187→- All components fully responsive with Tailwind prefixes (sm:, md:, lg:, xl:)
+   188→
+   189→### Verification
+   190→- Lint passes with no errors
+   191→- Dev server running, all API endpoints returning 200
+   192→- Dashboard API: totalProfiles=8, verifiedProfiles=5, compliancePassRate=65, averageTrustScore=62.5
+   193→- Identities API: 8 profiles with full credentials, evidence, verifications data
+   194→- Compliance API: summary.byType returns breakdown for pie chart
+   195→
+   196→---
+   197→
+   198→## Task 3-de: Compliance Automation & Risk Intelligence Components
+   199→**Agent**: compliance-risk-agent
+   200→**Date**: 2026-06-06
+   201→**Status**: ✅ Completed
+   202→
+   203→### Files Created
+   204→
+   205→1. **`/home/z/my-project/src/components/platform/ComplianceAutomation.tsx`** - Compliance automation section:
+   206→   - 'use client' directive with Framer Motion staggered card entrance animations
+   207→   - **Compliance Overview Cards** (4 summary cards in responsive grid):
+   208→     - Total Checks (FileCheck icon, emerald accent) — count of all compliance checks
+   209→     - Pass Rate (ProgressRing SVG component, sky accent) — percentage with circular ring indicator
+   210→     - Pending Reviews (Clock icon, amber accent) — count of pending/in_progress/under_review
+   211→     - Escalated (AlertTriangle icon, red accent) — count with highlighted red color
+   212→   - **Compliance Type Grid** (2x4 responsive grid):
+   213→     - 8 compliance type cards using COMPLIANCE_TYPES from platform-data
+   214→     - Each card: type-specific icon, type name, regulation reference, check count, pass rate mini bar
+   215→     - Color coded by type (emerald=AML, blue=KYC, cyan=CDD, purple=EDD, red=Sanctions, amber=PEP, pink=Adverse Media, orange=Right to Rent)
+   216→     - Custom TYPE_COLORS map with icon, color, and bgColor for each type
+   217→     - shadcn Progress component for mini pass rate bars
+   218→   - **Compliance Pipeline Visualization**:
+   219→     - Horizontal flow: Submitted → In Progress → Under Review → (branching) → Passed/Failed/Escalated
+   220→     - ArrowRight connectors between stages
+   221→     - Branching arrows at "Under Review" stage showing three possible outcomes
+   222→     - Color-coded stage boxes with counts
+   223→   - **Compliance Checks Table**:
+   224→     - shadcn Table with max-h-80 overflow-y-auto and custom scrollbar styling
+   225→     - Columns: Profile Name, Check Type (colored outline badge), Status (colored badge), Risk Rating (colored badge), Provider, Reviewed By, Date, Actions
+   226→     - Filterable by type using shadcn Select dropdown
+   227→     - StatusBadge and RiskBadge sub-components using getStatusStyle from platform-data
+   228→     - Filter icon + Select trigger in header
+   229→   - **Regulatory Framework Section**:
+   230→     - 5 regulation badges: UK GDPR, UK MLR 2017, FCA Guidance, Immigration Act 2014, Data Protection Act 2018
+   231→     - Each badge has Tooltip with description on hover
+   232→     - Landmark icon prefix on each badge
+   233→   - Data fetched from /api/compliance using useApi hook
+   234→   - Loading skeleton state with animated pulse placeholders
+   235→
+   236→2. **`/home/z/my-project/src/components/platform/RiskIntelligence.tsx`** - Risk intelligence and trust scoring section:
+   237→   - 'use client' directive with Framer Motion animations
+   238→   - **Risk Overview Cards** (4 metric cards in responsive grid):
+   239→     - Average Risk Score (Shield icon, emerald accent) — 0-100 scale
+   240→     - High Risk Profiles (AlertTriangle icon, red accent) — count of high/critical profiles
+   241→     - Open Fraud Alerts (AlertCircle icon, amber accent) — count of open/investigating alerts
+   242→     - Trust Score Trend (TrendingUp icon, sky accent) — with MiniSparkline SVG component
+   243→   - **Risk Distribution Chart** (left column):
+   244→     - Recharts BarChart showing count per risk category (Low/Medium/High/Critical)
+   245→     - Color-coded bars matching RISK_CATEGORIES colors
+   246→     - CartesianGrid, custom tooltip, rounded bar tops
+   247→   - **Risk Composition Pie Chart** (right column):
+   248→     - Recharts PieChart with innerRadius donut style
+   249→     - Color-coded segments matching RISK_CATEGORIES
+   250→     - Legend at bottom, custom tooltip
+   251→   - **Fraud Alerts Panel**:
+   252→     - List of fraud alert cards using shadcn Alert component
+   253→     - Each alert: severity badge (color-coded), type, description, status badge, assigned to, date
+   254→     - Severity config map: critical=red, high=orange, medium=amber, low=green
+   255→     - Border-left color matches severity
+   256→     - Filterable by status (open, investigating, confirmed, false_positive, resolved) using shadcn Select
+   257→     - max-h-96 overflow-y-auto with custom scrollbar
+   258→   - **Risk Factor Breakdown**:
+   259→     - Profile selector via shadcn Select dropdown
+   260→     - Overall score display with risk category badge and fraud probability
+   261→     - 4 animated risk factor bars: Identity Risk (blue), Financial Risk (amber), Behavioral Risk (purple), Compliance Risk (red)
+   262→     - Custom RiskFactorBar component with Framer Motion width animation
+   263→   - **Trust Score Leaderboard**:
+   264→     - Table sorted by overall risk score (descending)
+   265→     - Columns: Rank, Name, Trust Score, Risk Category (colored badge), Trust Level (colored outline badge with TRUST_LEVELS colors), Overall Risk (Progress bar)
+   266→     - Click row to select profile for factor breakdown
+   267→     - max-h-80 overflow-y-auto with custom scrollbar
+   268→   - **Explainability Panel**:
+   269→     - Decision Summary card with Info icon — overall score, category, elevated fraud flag
+   270→     - Evidence Traceability card with TreePine icon — Identity/Financial/Behavioural/Compliance strength assessment with risk scores
+   271→     - Confidence Scores card with Shield icon — 4 metrics with Progress bars (Model Confidence, Data Completeness, Identity Assurance, Overall Confidence)
+   272→     - Raw Explainability Data card (if available) — JSON display with Lock icon
+   273→     - Model version and assessment date footer
+   274→   - Data fetched from /api/risk using useApi hook
+   275→   - Loading skeleton state
+   276→
+   277→3. **`/home/z/my-project/src/components/providers.tsx`** - TanStack Query provider:
+   278→   - QueryClientProvider wrapper with QueryClient instance
+   279→   - Default staleTime: 30s, retry: 1
+   280→   - 'use client' directive for client-side rendering
+   281→
+   282→4. **`/home/z/my-project/src/app/layout.tsx`** - Updated with Providers wrapper:
+   283→   - Added QueryClientProvider via Providers component
+   284→   - Wraps children for TanStack Query support
+   285→
+   286→5. **`/home/z/my-project/src/app/page.tsx`** - Updated with Compliance & Risk sections:
+   287→   - Tab-based navigation between Compliance Automation and Risk Intelligence
+   288→   - Header with PropComply AI + VerifyMe Global branding
+   289→   - AnimatePresence for smooth section transitions
+   290→   - Sticky header with platform status badge
+   291→   - Footer with regulatory references
+   292→   - Emerald/sky color scheme for navigation
+   293→
+   294→### Key Design Decisions
+   295→- Used custom ProgressRing SVG component instead of shadcn Progress for circular pass rate indicator
+   296→- Used MiniSparkline SVG component for trust score trend (lightweight, no extra dependencies)
+   297→- Custom RiskFactorBar with Framer Motion width animation for engaging risk factor visualization
+   298→- Compliance pipeline uses branching arrows at "Under Review" to show three possible outcomes
+   299→- Explainability panel uses nested card structure with distinct icons for each section
+   300→- All colors follow the established palette: emerald for trust/success, amber for warning, red for risk, blue for identity
+   301→- Used `style jsx` for custom scrollbar styling (thin scrollbar with rounded thumb)
+   302→
+   303→### Verification
+   304→- Lint passes with no errors
+   305→- Dev server running with 200 responses
+   306→- Compliance API: returns 26 checks with summary breakdowns
+   307→- Risk API: returns 8 risk scores and 4 fraud alerts with enriched profile data
+   308→- Both components render correctly with animated transitions
+   309→
+   310→---
+   311→
+   312→## Task 3-fg: Property Intelligence, Partner Ecosystem & AI Assistant
+   313→**Agent**: property-partners-ai-agent
+   314→**Date**: 2026-06-06
+   315→**Status**: ✅ Completed
+   316→
+   317→### Files Created
+   318→
+   319→1. **`/home/z/my-project/src/components/platform/PropertyIntelligence.tsx`** - Property compliance and intelligence section:
+   320→   - 'use client' directive with Framer Motion staggered entrance animations
+   321→   - **Property Overview Summary Cards** (4 metric cards in responsive grid):
+   322→     - Total Properties (Building2 icon, teal accent)
+   323→     - Compliant (CheckCircle2 icon, emerald accent)
+   324→     - Non-Compliant (XCircle icon, red accent)
+   325→     - Under Review (Clock icon, violet accent)
+   326→   - **Properties List** — Grid of property cards (1/2/3 columns responsive):
+   327→     - Each card: MapPin icon + address, city, postcode
+   328→     - Property type badge (residential/commercial/hmo with distinct icons and colors)
+   329→     - Compliance status badge (color-coded via getStatusStyle)
+   330→     - Application count + last inspection date
+   331→   - **Property Applications Table** — Full shadcn Table:
+   332→     - Columns: Applicant (name+email), Property (address+city), Type (tenancy/purchase/rental badge), Status (color-coded), Compliance Clear (Check/X icons), Risk Clear (Check/X icons), Right to Rent (status badge), Guarantor (Replaced/Standard badge), Actions (Eye icon)
+   333→     - YesNoIcon component for boolean fields with green check / red X
+   334→   - **Right to Rent Status Panel** — Side-by-side with Guarantor Replacement:
+   335→     - 4 status count boxes: Pending (amber), Verified (emerald), Failed (red), Expired (gray)
+   336→     - Regulatory reference: Immigration Act 2014 Section 22
+   337→     - Civil penalty warning (£3,000 per tenant)
+   338→     - Automated verification note with UserCheck icon
+   339→   - **Guarantor Replacement Feature**:
+   340→     - Lists profiles where guarantorReplaced is true
+   341→     - Shows profile name, trust level, application type
+   342→     - "How It Works" explanation card with gradient background
+   343→     - Eligibility badges: Level 3+ Required, Compliance Clear, Risk Clear
+   344→   - **Market Intelligence Section** (3-column grid):
+   345→     - Average Trust Score by Area (5 mock areas with Progress bars)
+   346→     - Compliance Rate Trend (6-month animated bar chart with Framer Motion width transitions)
+   347→     - Risk Heatmap (5x5 decorative grid with color intensity based on sin function)
+   348→     - Color legend for heatmap (Low Risk → High Risk)
+   349→   - Data fetched from /api/properties using useApi hook
+   350→   - Loading skeleton state with animated pulse placeholders
+   351→   - Error state with AlertTriangle icon and error message
+   352→
+   353→2. **`/home/z/my-project/src/components/platform/PartnerEcosystem.tsx`** - Partner ecosystem and integrations section:
+   354→   - 'use client' directive with Framer Motion staggered entrance animations
+   355→   - **Partner Overview Summary Cards** (4 metric cards):
+   356→     - Total Partners (Handshake icon, teal accent)
+   357→     - Active Integrations (Link2 icon, emerald accent)
+   358→     - Referrals Sent (Send icon, cyan accent)
+   359→     - Referral Success Rate (TrendingUp icon, violet accent, percentage)
+   360→   - **Partner Type Cards** — 3x2 responsive grid:
+   361→     - 6 cards matching PARTNER_TYPES from platform-data
+   362→     - Each: icon (Landmark/Shield/Home/ArrowLeftRight/Briefcase/GraduationCap), name, description, count of partners
+   363→     - Unique color per type (teal=bank, violet=insurer, amber=mortgage, cyan=remittance, indigo=employer, pink=university)
+   364→   - **Partners Directory** — Grid of partner cards (1/2/3 columns):
+   365→     - Each: type icon in colored circle, partner name, status badge, type badge, integration type
+   366→     - Trust rating with Progress bar + numeric value
+   367→     - Referral count with Send icon + creation date
+   368→   - **Referral Pipeline** — Horizontal flow visualization:
+   369→     - 6 stages: Profile → Compliance Clear → Risk Clear → Partner Match → Referral Sent → Accepted/Completed
+   370→     - Each stage: icon in colored circle, label, count
+   371→     - ArrowRight connectors between stages (hidden on mobile, visible on md+)
+   372→   - **Integration Architecture** — 2x2 grid of capability cards:
+   373→     - Internal APIs (Globe icon, teal) — microservice domains
+   374→     - Partner APIs (Link2 icon, violet) — secure endpoints
+   375→     - Webhooks (Webhook icon, amber) — real-time notifications
+   376→     - Event Streams (Zap icon, cyan) — event-driven architecture
+   377→     - Technology badges: REST API, GraphQL, OAuth 2.0, mTLS, Rate Limiting, Idempotency
+   378→   - **Banking Referrals Feature**:
+   379→     - "How Banking Referrals Work" explanation card with gradient background
+   380→     - 5-step flow: Profile Verified → Compliance & Risk Clear → Package Generated → Sent to Partner → Partner Review
+   381→     - Each step numbered with colored icon and Active badge
+   382→     - Eligibility badges: Auto-Referral, KYC Package, Risk Summary
+   383→   - Data fetched from /api/partners using useApi hook
+   384→   - Loading skeleton and error states
+   385→
+   386→3. **`/home/z/my-project/src/components/platform/AIAssistant.tsx`** - AI-powered compliance assistant chatbot:
+   387→   - 'use client' directive with Framer Motion animations and AnimatePresence
+   388→   - **Chat Header**:
+   389→     - Bot icon in teal rounded container, "PropComply AI Assistant" title
+   390→     - Online badge with Sparkles icon (emerald green)
+   391→     - Regulatory knowledge badges: UK GDPR, UK MLR 2017, FCA Guidance, Immigration Act 2014
+   392→     - Each badge has icon + name + color matching the regulation
+   393→   - **Chat Messages Area** (ScrollArea with max-height):
+   394→     - User messages on right with teal-600 background + white text + rounded-br-md
+   395→     - AI messages on left with gray-muted background + rounded-bl-md + Bot avatar
+   396→     - User messages: User icon in teal circle
+   397→     - AI messages: Bot icon in teal-100 circle
+   398→     - Simple markdown rendering: **bold** text, bullet points (•)
+   399→     - Timestamps on each message (HH:MM format)
+   400→     - AnimatePresence with popLayout for smooth message entrance
+   401→   - **Typing Indicator** — 3 bouncing dots with staggered delays (0, 0.15s, 0.3s)
+   402→   - **Suggested Questions** — 4 clickable buttons:
+   403→     - "What are the UK MLR 2017 requirements for CDD?"
+   404→     - "How does the Trust Ladder work?"
+   405→     - "Explain Right to Rent verification process"
+   406→     - "What triggers Enhanced Due Diligence?"
+   407→   - **Input Area** — Form with Input + teal Send button (icon-only)
+   408→   - **State Management**:
+   409→     - messages: ChatMessage[] with id, role, content, timestamp
+   410→     - isLoading: boolean for typing indicator
+   411→     - input: string for text input
+   412→     - Auto-scroll to bottom on new messages via useRef + useEffect
+   413→   - **Mock Response Engine** — generateMockResponse function:
+   414→     - Keyword matching for MLR/CDD, Trust Ladder, Right to Rent, EDD, AML/KYC, Guarantor
+   415→     - Each response: detailed multi-paragraph answer with bold headings and bullet points
+   416→     - Default fallback response for general queries
+   417→     - 800-2000ms random delay for realistic feel
+   418→   - **Welcome Message** — Pre-populated AI message introducing capabilities
+   419→   - Enterprise-grade polished UI with consistent teal color scheme
+   420→
+   421→4. **`/home/z/my-project/src/app/api/ai-chat/route.ts`** - AI chat mock API endpoint:
+   422→   - POST handler accepting { message: string }
+   423→   - Returns { response: string, timestamp: string }
+   424→   - Keyword-based mock responses matching the client-side mock engine
+   425→   - Error handling for missing message and server errors
+   426→   - Ready for future LLM integration
+   427→
+   428→5. **`/home/z/my-project/src/app/page.tsx`** — Updated with all 7 platform sections:
+   429→   - All NAV_SECTIONS now active (dashboard, identity, compliance, risk, property, partners, ai-assistant)
+   430→   - SECTION_META config for each section with icon, title, and description
+   431→   - Default section changed to 'dashboard'
+   432→   - Responsive navigation tabs: icons only on mobile, icon+label on sm+
+   433→   - Framer Motion AnimatePresence for all 7 section transitions
+   434→   - Imports all platform components: DashboardOverview, IdentityTrust, ComplianceAutomation, RiskIntelligence, PropertyIntelligence, PartnerEcosystem, AIAssistant
+   435→
+   436→### Key Design Decisions
+   437→- Property type badges use distinct icons: Home (residential), Building2 (commercial), Users (hmo)
+   438→- Right to Rent and Guarantor Replacement displayed side-by-side on lg screens for logical grouping
+   439→- Market Intelligence uses animated bars instead of Recharts for lightweight visual appeal
+   440→- Risk heatmap uses sin-based intensity formula for decorative visualization
+   441→- Partner type colors follow a consistent scheme matching the partner's domain
+   442→- Referral pipeline shows counts at each stage with directional arrows
+   443→- AI Assistant uses client-side mock responses (no backend dependency) for immediate functionality
+   444→- Chat messages use AnimatePresence with popLayout for smooth insertion animations
+   445→- Suggested questions as outlined pill buttons for discoverability
+   446→
+   447→### Verification
+   448→- Lint passes with no errors
+   449→- Dev server running with 200 responses on all routes
+   450→- Properties API: returns 3 properties with 5 applications
+   451→- Partners API: returns 4 partners (Barclays, AXA, Halifax, Wise) with 6 referrals
+   452→- AI Chat API: returns keyword-matched mock responses
+   453→- All 7 navigation tabs functional with smooth transitions
+   454→
+   455→---
+   456→
+   457→## Task 4: Property Anti-Money Laundering (AML) Verification Workflow
+   458→**Agent**: aml-workflow-agent
+   459→**Date**: 2026-06-07
+   460→**Status**: ✅ Completed
+   461→
+   462→### Files Created
+   463→
+   464→1. **`/home/z/my-project/src/components/platform/AMLWorkflow.tsx`** — Interactive 7-step AML verification workflow component:
+   465→   - 'use client' directive with Framer Motion animations and AnimatePresence for step transitions
+   466→   - **Horizontal Pipeline Stepper** — 7-step progress indicator with icons, status colors, and active step animation
+   467→     - Each step: colored circle with icon, name label, completion checkmark
+   468→     - ChevronRight connectors between steps (emerald when completed)
+   469→     - Overall progress bar (X/7 steps complete)
+   470→     - Click completed/active steps to navigate
+   471→   - **Step 1: Transaction Initialization** — Two-column layout
+   472→     - Left: Form with auto-generated transaction reference (font-mono, read-only), property reference input, transaction type Select (property_application, real_estate_purchase, tenant_verification, landlord_registration), amount input with £ prefix, "Initialize Transaction" button with Zap icon + loading animation
+   473→     - Right: Transaction summary card — shows reference, amount, type, property ref, initialized timestamp after initialization; empty state with FileText icon before
+   474→   - **Step 2: Identity Verification Integration** — Two-column layout
+   475→     - Left: Profile selector via Select dropdown (5 mock profiles with trust level badges), profile preview card with avatar initials, KYC status badge, trust level badge, "Verify Identity Integration" button
+   476→     - Right: Verification result panel — 4 KYC indicators (Document Verification, Biometric Check, Liveness Detection, PEP/Screening Baseline) with status badges, trust level Progress bar, success/failure Alert
+   477→   - **Step 3: Customer Due Diligence (CDD)** — Two-column layout
+   478→     - Left: "Trigger CDD Assessment" button with loading animation, risk classification Select (Simplified/Standard/Enhanced with colored dots), risk factors checklist with 8 options (Checkbox components), CDD in-progress state with animated Progress bar
+   479→     - Right: CDD result card — large classification badge (emerald=low, amber=medium, red=high), risk factors with Flag icons, completion Alert
+   480→   - **Step 4: Watchlist Screening** — Full-width layout with 3 screening panels
+   481→     - Header: Screening provider badge (ComplyAdvantage), "Run Screening" button, animated progress bar during scan
+   482→     - **Sanctions Panel** — Red accent, Ban icon, 4 databases (OFAC 🇺🇸, EU 🇪🇺, UN 🇺🇳, HMT 🇬🇧) with per-database status icons, result details
+   483→     - **PEP Panel** — Amber accent, Landmark icon, 3 registries (UK, EU, Global) with status icons, result details
+   484→     - **Adverse Media Panel** — Pink accent, Newspaper icon, 3 sources (Negative News, Regulatory Actions, Legal Proceedings) with status icons, result details
+   485→     - Each panel: ScreeningBadge component (Pending/Scanning/Clear/Match/Potential Match), border color changes based on result
+   486→     - Simulated phased screening: Sanctions → PEP → Adverse Media with sequential timeouts
+   487→     - Completion Alert: green for all-clear, amber for flags detected
+   488→   - **Step 5: Source of Funds & EDD** — Conditional display
+   489→     - If no EDD required: large CheckCircle2 icon + "EDD Not Required" message with "Proceed to Decision" button
+   490→     - If EDD required: Two-column layout with red border styling
+   491→       - Left: EDD escalation Alert, Source of Funds declaration Select (7 options), supporting documents checklist (6 document types with Upload icons), "Complete EDD Verification" button
+   492→       - Right: EDD structural verification checklist (6 items: Identity Structure, Source of Wealth, Beneficial Ownership, Transaction Pattern, Jurisdiction Risk, Business Relationship Purpose), verification progress counter and mini Progress bar
+   493→   - **Step 6: Compliance Decision Routing** — Full-width decision visualization
+   494→     - Two-branch comparison cards:
+   495→       - Branch A (Lockdown): Red styling, Lock icon, alert for sanctions/PEP match, freeze transaction action
+   496→       - Branch B (Clearance): Emerald styling, Unlock icon, compliance clearance, assign risk score
+   497→     - Active branch highlighted based on screening results, inactive branch dimmed (opacity-50)
+   498→     - "Route Compliance Decision" button with ShieldCheck icon
+   499→     - After decision: RiskScoreGauge SVG component (animated circular gauge, 0-100 scale, color-coded), decision details (result badge, decided by, timestamp, transaction ref, profile name)
+   500→     - Lockdown: red Alert with profile freeze notification
+   501→     - Cleared: emerald Alert with compliance clearance certificate
+   502→   - **Step 7: SAR Generation** — Conditional display
+   503→     - If SAR not required: "SAR Not Required" message with transaction summary
+   504→     - If SAR required: Red Alert for suspicious activity, two-column layout
+   505→       - Left: SAR payload preview — formatted JSON with syntax highlighting (pink keys, emerald strings, amber numbers), all screening results and findings
+   506→       - Right: SAR summary — filing reference (auto-generated), status badge (not_required/draft/filed/acknowledged), filed timestamp, key findings list with AlertTriangle icons, regulatory reference (UK MLR 2017 Regulation 20), "Generate & File SAR" button
+   507→   - **Navigation Controls** — Previous/Next step buttons, "Step X of 7" badge, disabled state logic based on step completion
+   508→   - State management: useState for all step data (transaction, identity, CDD, screening, EDD, decision, SAR), useCallback for handlers with simulated timeouts
+   509→
+   510→2. **`/home/z/my-project/src/app/api/aml-process/route.ts`** — AML process API endpoint:
+   511→   - **GET**: List AML processes with optional filtering (status, profileId, step query params)
+   512→     - Returns processes array, total count, summary (byStatus, byStep, completedCount, lockdownCount, clearedCount, sarCount)
+   513→   - **POST**: Create new AML process
+   514→     - Required: transactionType; Optional: profileId, propertyRef, transactionAmount
+   515→     - Validates profile existence if profileId provided
+   516→     - Auto-generates unique transaction reference (AML-{timestamp}-{random})
+   517→     - Creates audit log entry
+   518→   - **PATCH**: Update AML process step/status
+   519→     - Required: id; Optional: currentStep, status, and all AMLProcess fields
+   520→     - Allowed update fields whitelist for security
+   521→     - Auto-sets timestamps: decidedAt on decision status, sarFiledAt on SAR generation, screeningDate on screening checks
+   522→     - Creates audit log entry
+   523→
+   524→3. **`/home/z/my-project/src/components/platform/ComplianceAutomation.tsx`** — Updated with Tabs:
+   525→   - Added shadcn Tabs component at top with two tabs:
+   526→     - "Compliance Checks" (FileCheck icon) — active: emerald-50 bg + emerald-700 text
+   527→     - "AML Workflow" (ShieldCheck icon) — active: teal-50 bg + teal-700 text
+   528→   - Extracted existing compliance content into `ComplianceChecksTab` sub-component (all cards, pipeline, table, regulatory framework unchanged)
+   529→   - Imported AMLWorkflow and rendered in "AML Workflow" tab via TabsContent
+   530→   - Main `ComplianceAutomation` component now renders Tabs with both TabsContent panels
+   531→
+   532→### Key Design Decisions
+   533→- Used teal/cyan color scheme for early steps (Init, KYC, CDD), amber for screening, red for EDD, violet for decision, pink for SAR — reflecting escalating risk
+   534→- Simulated screening runs in 3 phases (6.5 seconds total) with sequential status updates — realistic multi-database scanning feel
+   535→- RiskScoreGauge uses raw SVG with Framer Motion for smooth animated score reveal
+   536→- EDD step is conditional — shows streamlined "not required" message or full verification form based on screening flags
+   537→- SAR step is conditional — shows "not required" when cleared, or full filing workflow when suspicious
+   538→- Step navigation is gated by completion requirements (e.g., can't skip to Step 3 without initializing transaction)
+   539→- Mock profiles have different trust levels and KYC statuses to demonstrate both clean and flagged pathways
+   540→- All step data managed in parent component state for cross-step communication (e.g., screening results determine EDD requirement and decision routing)
+   541→
+   542→### Verification
+   543→- Lint passes with no errors
+   544→- Dev server running with 200 responses
+   545→- AML Process API GET: returns empty list (no seeded data), summary with all zero counts
+   546→- AML Process API POST: creates process with auto-generated reference, 201 response
+   547→- AML Process API PATCH: updates process fields with audit logging
+   548→- Both Compliance Checks and AML Workflow tabs render correctly
+   549→
+   550→## Task 3: VerifyMe Global Profile Creation & Tenant Onboarding Wizard
+   551→**Agent**: onboarding-wizard-agent
+   552→**Date**: 2026-06-07
+   553→**Status**: ✅ Completed
+   554→
+   555→### Files Created
+   556→
+   557→1. **`/home/z/my-project/src/components/platform/VerifyMeOnboarding.tsx`** — 10-step interactive onboarding wizard component:
+   558→   - 'use client' directive with Framer Motion animations and AnimatePresence for step transitions
+   559→   - **Vertical Stepper (left panel)**: Shows all 10 steps with completed/current/pending status, progress bar, step icons from Lucide
+   560→   - **Step Content (right panel)**: Animated step transitions with Next/Previous navigation and dot indicators
+   561→   - **Step 1 — Account Registration**: Form with email, name, nationality fields; RadioGroup for registration method (Email/Google/Microsoft) with styled option cards; MFA toggle switch with Shield icon; "Create Account" button with success animation
+   562→   - **Step 2 — Identity Evidence Collection**: Three upload zones (Passport, Visa/Residence Permit, Financial Files) with simulated upload progress; drag-drop styled areas; file size indicators; color-coded status badges; warning note about required documents
+   563→   - **Step 3 — Biometric Verification Layer**: Simulated selfie capture with animated face outline and scanning ring; three metric cards (Liveness Detection 94%, Face Match 91%, Deepfake Validation 97%); CircularGauge component for overall biometric confidence score; cryptographic cross-match note with AES-256-GCM encryption reference
+   564→   - **Step 4 — Financial Behaviour Analysis**: Month selector (3/6/12/24) with styled toggle buttons; three animated progress bars (Income Stability, Spending Coherence, Profession Match); Coherence result (Pass/Review) with contextual message; Open Banking integration note
+   565→   - **Step 5 — Cross-Jurisdictional Validation**: Source country selector (13 countries); DbCheckIndicator sub-component for database check status (NIN/Aadhaar, UK Home Office, Professional Registry); animated result reveal; jurisdictional verification summary
+   566→   - **Step 6 — Triple Source Corroboration Engine Fusion**: Three domain score cards (Biometric, Behavioural, Jurisdictional) with weights (35%/35%/30%); animated fusion visualization with merging circles; large CircularGauge (160px) for overall confidence score; fusion formula explanation
+   567→   - **Step 7 — Confidence Gateway Check**: Large score display with SVG gauge; threshold marker at 80 with visual line indicator; IF ≥ 80: Green "AUTO CERTIFIED" badge with spring animation and Award icon; IF < 80: Orange "MANUAL REVIEW REQUIRED" with routing info; gateway logic explanation
+   568→   - **Step 8 — Risk Assessment**: Four risk vector cards (Identity, AML, Financial, Tenancy) with RiskGauge sub-component; color-coded categories (Low/Medium/High/Critical); overall risk assessment summary with four mini score boxes; explainability note with Eye icon
+   569→   - **Step 9 — Credential Generation & Issuance**: Credential generation animation with rotating key icon; encrypted credential token display; QR code placeholder grid; portable identity profile summary; credential validity with expiry date
+   570→   - **Step 10 — Agent Review & Approval**: Verification URL display with copy button; agent review status indicator (Pending/In Review/Approved/Rejected/More Evidence) with animated icons; simulated agent review interface with Approve/Reject/Request More Evidence buttons; reviewed-by information display
+   571→   - **Helper Components**: CircularGauge (SVG ring with animated stroke), RiskGauge (color-coded progress with category badge), DbCheckIndicator (status with icon)
+   572→   - **Simulation Engine**: Auto-runs verification simulations when entering steps (biometric, financial, jurisdictional, fusion, gateway, risk, credential); realistic multi-stage progress with timeouts
+   573→   - **Navigation Guards**: `canProceed()` function validates step completion before allowing Next; step-specific validation (account created, passport uploaded, biometric complete, etc.)
+   574→   - Emerald/teal color scheme, responsive design (mobile-first), enterprise-grade UI
+   575→
+   576→2. **`/home/z/my-project/src/app/api/onboarding/route.ts`** — Onboarding process API endpoint:
+   577→   - **GET**: List onboarding processes with filtering (status, currentStep, limit, offset); includes summary statistics (total, draft, in_progress, pending_review, certified, rejected counts, avg confidence score, auto_certified vs manual_review counts)
+   578→   - **POST**: Create new onboarding process with validation (applicantEmail + applicantName required); duplicate email check (409 Conflict for active processes); supports profileId, nationality, registrationMethod, mfaEnforced fields
+   579→   - **PATCH**: Update onboarding process step/status with allowed field whitelist (40+ fields covering all 10 steps); validates process exists (404 if not found); supports partial updates
+   580→   - Uses `db.onboardingProcess` from Prisma client
+   581→
+   582→3. **`/home/z/my-project/src/components/platform/IdentityTrust.tsx`** — Updated with Tabs component:
+   583→   - Added `Tabs`, `TabsContent`, `TabsList`, `TabsTrigger` imports from shadcn/ui
+   584→   - Added `Users` and `UserPlus` icon imports from Lucide
+   585→   - Added `VerifyMeOnboarding` import
+   586→   - Two tabs: "Profiles" (Users icon, shows existing trust ladder + profiles table) and "Onboarding" (UserPlus icon, shows VerifyMeOnboarding wizard)
+   587→   - TabsList with gap-1.5 icon+label triggers
+   588→   - `activeTab` state defaults to 'profiles'
+   589→
+   590→### Key Design Decisions
+   591→- CircularGauge uses raw SVG with motion.circle for smooth animated stroke transition (1.2s easeOut)
+   592→- RiskGauge uses motion.div width animation for engaging risk bar visualization
+   593→- Step simulations use setTimeout chains for realistic multi-stage verification feel
+   594→- Fusion engine computes weighted scores dynamically based on actual step results
+   595→- Gateway check is data-driven — auto_certified vs manual_review based on actual computed confidence score
+   596→- Agent review includes simulated review actions for demo purposes (Approve with 2s delay → auto-approve)
+   597→- QR code placeholder uses random grid pattern (no external QR library needed)
+   598→- All colors follow established palette: emerald (#10b981), teal (#0d9488), cyan (#06b6d4), amber (#f59e0b), red (#ef4444)
+   599→- Tabs integration preserves all existing IdentityTrust functionality unchanged
+   600→
+   601→### Verification
+   602→- Lint passes with 0 errors (1 warning in unrelated AMLWorkflow.tsx)
+   603→- Dev server returning 200 on main page
+   604→- Onboarding API: GET returns empty processes with summary, POST creates process successfully, all fields stored correctly
+   605→- Identity section: Profiles tab shows existing trust ladder + profiles table, Onboarding tab shows 10-step wizard
+   606→
+   607→---
+   608→
+   609→## Task 5: Right to Rent Compliance Flow
+   610→**Agent**: rtr-flow-agent
+   611→**Date**: 2026-06-07
+   612→**Status**: ✅ Completed
+   613→
+   614→### Files Created
+   615→
+   616→1. **`/home/z/my-project/src/components/platform/RightToRentFlow.tsx`** - 7-step interactive Right to Rent compliance workflow:
+   617→   - 'use client' directive with Framer Motion animations and AnimatePresence
+   618→   - **Vertical Timeline Stepper** (desktop): 7-step circular icons with connector lines, completed steps shown in emerald, current step with teal ring animation, accessible step navigation
+   619→   - **Mobile Step Navigation**: Compact horizontal step buttons with icons, active step highlighted
+   620→   - **Progress Bar**: Overall progress indicator (step X of 7)
+   621→   - **Step 1 — Initiate Check**:
+   622→     - Initiator name input field
+   623→     - Check reason selector (5 options: new_tenancy, renewal, statutory_repeat, compliance_audit, change_circumstance)
+   624→     - Applicant search with filterable mock applicant cards (5 applicants with name, nationality, visa type)
+   625→     - Property selector with 3 mock UK properties
+   626→     - "Initiate Right to Rent Check" button with validation
+   627→   - **Step 2 — Visa Ingestion & OCR Validation**:
+   628→     - Visa type selector (8 types: Tier 2, Tier 4, EU Settlement, Pre-Settled, Resident Permit, ILR, Spouse, Global Talent)
+   629→     - Document upload zone with drag-and-drop styling and encryption badge
+   630→     - OCR processing animation (spinning icon, progress bar, 3-stage checklist)
+   631→     - Results grid: Document Authenticity (pass/fail), Tampering Detection (clean/tampered), OCR Confidence (circular SVG score indicator)
+   632→   - **Step 3 — Home Office Validation**:
+   633→     - "Connect to Home Office API" start button
+   634→     - Animated connection with staggered check results (3.6s total):
+   635→       - Visa Grant Validity (1.2s delay)
+   636→       - UK Residence Data (2.4s delay)
+   637→       - Immigration Permissions (3.6s delay)
+   638→     - Each check shows pending spinner → verified badge
+   639→     - Complete result card with check date and reference number
+   640→   - **Step 4 — Status & Visa Verification**:
+   641→     - Auto-triggered status parsing animation
+   642→     - Immigration status badge: Permanent Right to Rent (emerald, BadgeCheck icon) or Time-Limited Status (amber, Timer icon)
+   643→     - Spring animation for status badge entrance
+   644→     - Visa details cards (type + expiry date)
+   645→     - Parsed restrictions list with staggered animation
+   646→     - Status verification summary
+   647→   - **Step 5 — Risk & Compliance Assessment**:
+   648→     - "Run Compliance Rules Engine" start button
+   649→     - Rules engine running animation (spinning Zap icon, progress bar)
+   650→     - Large compliance result badge: COMPLIANT / REVIEW REQUIRED / NON-COMPLIANT
+   651→     - Statutory Guidelines Checklist (8 checks with pass/fail badges)
+   652→     - Risk Assessment Summary with statutory met badge
+   653→   - **Step 6 — Evidence Generation & Certification**:
+   654→     - "Generate Evidence Trail" start button
+   655→     - Evidence generating animation (spinning Lock icon, progress bar)
+   656→     - Immutable Proof Log display (5 timestamped entries with evidence reference)
+   657→     - Certificate Preview card (white card with border):
+   658→       - Certificate token, evidence reference, issue date, expiry date
+   659→       - Cryptographically signed badge
+   660→     - "Issue Certificate" button → generates token and dates
+   661→     - Download Certificate button (after issuance)
+   662→   - **Step 7 — Continuous Expiry Monitoring**:
+   663→     - "Activate Continuous Monitoring" start button
+   664→     - Monitoring Dashboard with 3 status cards:
+   665→       - Days to Expiry (large number, color-coded)
+   666→       - Alert Status badge (None/Warning/Critical/Expired)
+   667→       - Monitoring Active toggle (Switch component)
+   668→     - Alert History timeline (3 mock entries with type icons)
+   669→     - Dual-Sided Workflow Tracker (agent + applicant view):
+   670→       - Agent: 5-step checklist (Check Initiated → Monitoring Active)
+   671→       - Applicant: 5-step checklist (Verification Request → Expiry Notifications)
+   672→     - "Process Complete" badge
+   673→   - **State Management**: Comprehensive RTRStepData type with all step fields, INITIAL_STEP_DATA constant
+   674→   - **Navigation**: goToStep(), nextStep(), prevStep() with completed steps tracking
+   675→   - **Simulation Functions**: simulateOCR (3s), simulateHomeOffice (4.5s staggered), simulateStatusVerification (1.5s), simulateRiskAssessment (3.5s), simulateEvidenceGeneration (2.5s), issueCertificate, activateMonitoring
+   676→   - Color scheme: teal/emerald primary, amber for pending, red for failed, violet for monitoring
+   677→
+   678→2. **`/home/z/my-project/src/app/api/rtr-process/route.ts`** - Right to Rent process API:
+   679→   - **GET**: List RTR processes with filtering (status, profileId, propertyId, limit, offset)
+   680→     - Returns processes array, total count, summary breakdowns (byStatus, byComplianceResult, byAlertStatus, withCertificate, monitoringActive, totalProcessed)
+   681→   - **POST**: Create new RTR process
+   682→     - Required: initiatedBy field
+   683→     - Optional: profileId, agentId, propertyId, checkReason, visaType
+   684→     - Returns created process with 201 status
+   685→   - **PATCH**: Update RTR process step/status
+   686→     - Required: id field
+   687→     - Supports updating all step fields across 7 steps
+   688→     - Validates process exists (404 if not found)
+   689→     - Returns updated process
+   690→   - Uses `import { db } from '@/lib/db'` for Prisma ORM access
+   691→
+   692→3. **`/home/z/my-project/src/components/platform/PropertyIntelligence.tsx`** - Updated with Tabs:
+   693→   - Added ShieldCheck icon import
+   694→   - Added RightToRentFlow import
+   695→   - Wrapped existing content in `<Tabs defaultValue="properties">` with two tabs:
+   696→     - "Properties" tab (Building2 icon): Shows existing property cards, applications table, Right to Rent status, Guarantor Replacement, and Market Intelligence
+   697→     - "Right to Rent" tab (ShieldCheck icon): Shows the new RightToRentFlow component
+   698→   - TabsList responsive: full-width on mobile, auto-width on sm+
+   699→
+   700→### Key Design Decisions
+   701→- Vertical timeline stepper on desktop provides clear step progression with clickable navigation
+   702→- Each step simulates real-world verification with animated progress (OCR, Home Office, Rules Engine)
+   703→- Permanent vs Time-Limited status distinction drives certificate expiry and monitoring behavior
+   704→- Dual-sided workflow tracker shows both agent and applicant perspectives
+   705→- Certificate preview uses white card on gradient background for visual distinction
+   706→- All simulations use staggered timeouts for realistic feel
+   707→- Immigration Act 2014 Section 22 referenced throughout for regulatory compliance
+   708→- Emerald/teal color scheme maintained consistently with project conventions
+   709→
+   710→### Verification
+   711→- Lint passes with no errors on all new/modified files
+   712→- Dev server running with 200 responses
+   713→- RTR Process API: GET returns processes + summary, POST creates process, PATCH updates process fields
+   714→- All 7 steps functional with animated transitions between steps
+   715→- Tabs in Property Intelligence section working correctly
+   716→
+   717→---
+   718→Task ID: 7
+   719→Agent: IdentityTrust Overhaul Agent
+   720→Task: Overhaul IdentityTrust component
+   721→
+   722→Work Log:
+   723→- Updated IdentityTrust component interface to accept `searchQuery` and `onClearSearch` props
+   724→- Added search/filter functionality: filters identities by firstName, lastName, email, nationality when searchQuery is provided; shows emerald search info banner with result count and clear button
+   725→- Updated VerifyMeOnboarding component: added `onComplete` callback prop; when step 10 agent review is approved, "Complete Onboarding" button calls onComplete; when not yet approved, "Return to Profiles" button appears to navigate back
+   726→- Fixed Biometric Face Match card hidden by banner: increased verification records ScrollArea from max-h-72 to max-h-96; increased credentials ScrollArea from max-h-72 to max-h-96; both panels now have adequate scroll space
+   727→- Tenant view overhaul: when dataScope is 'own' (tenant role), shows "My Identity Profile" card instead of profiles table; displays their own trust level, verification status, and credentials; includes "Start/Continue Onboarding" button; no visibility of other tenants/applicants; uses useSession() to filter identities to only show the tenant's own profile; extracted TenantIdentityView as a sub-component
+   728→- Identity Verifier view overhaul: when role is 'identity_verifier', shows "Pending Reviews" section at top highlighting profiles with pending/in_progress verifications; added Approve/Reject/Request More Evidence action buttons on verification records with pending or in_progress status; extracted VerifierReviewActions sub-component for review action buttons; pending reviews are clickable to select the profile for detailed review
+   729→- Used getDataScope from @/lib/rbac for role-based data scoping
+   730→- Imported additional Lucide icons: Search, X, ThumbsUp, ThumbsDown, HelpCircle, Eye, AlertTriangle, ClipboardCheck
+   731→- Lint passes with 0 errors (1 unrelated warning in identities/route.ts)
+   732→- Dev server compiles and runs successfully
+   733→
+   734→Stage Summary:
+   735→- IdentityTrust now supports searchQuery/onClearSearch props with filtered table and search info banner
+   736→- VerifyMeOnboarding now accepts onComplete callback for returning to profiles tab after onboarding
+   737→- ScrollArea heights increased from max-h-72 to max-h-96 for verification records and credentials panels
+   738→- Tenant view completely overhauled to show only own profile with dedicated TenantIdentityView component
+   739→- Identity Verifier view enhanced with Pending Reviews section and review action buttons (Approve/Reject/Request More Evidence)
+   740→- All changes maintain backward compatibility with existing Trust Ladder visualization and shadcn/ui components
+   741→
+   742→---
+   743→Task ID: 10
+   744→Agent: RBAC & Property Overhaul Agent
+   745→Task: Overhaul RBAC module assignments and PropertyIntelligence tenant view
+   746→
+   747→Work Log:
+   748→- Read current RBAC file (src/lib/rbac.ts) and verified all role section assignments match the spec — all KEEP AS IS
+   749→- Updated ROLE_PERMISSIONS_MATRIX for tenant role: changed `property: { view_all: true, apply: true }` to `property: { view_own: true, apply: true }` so tenants only see their own data, not all property data
+   750→- Read current PropertyIntelligence.tsx and RightToRentFlow.tsx to understand full component structure
+   751→- Completely overhauled PropertyIntelligence.tsx with role-based conditional rendering:
+   752→  - Added `PropertyIntelligenceProps` interface with optional `onNavigate` callback
+   753→  - Created `TenantPropertyView` component for tenant users showing:
+   754→    - Welcome banner card with teal gradient
+   755→    - 4 quick status summary cards (Application, Right to Rent, Compliance, Risk)
+   756→    - "My Application(s)" detail card with filtered data (only apps where `app.profile.email === session.user.email`)
+   757→    - "My Right to Rent Status" card with large status indicator, certificate details, expiry warnings
+   758→    - "My Guarantor Status" card with eligibility checklist (Trust Level 3+, Compliance Clear, Risk Clear)
+   759→    - "Upload Documents" CTA card with button linking to identity/onboarding section
+   760→  - Created `TenantRightToRentSummary` component for read-only RTR view showing:
+   761→    - Header card with description
+   762→    - Main status card with large animated status indicator, certificate details, expiry monitoring info
+   763→    - "What Happens Next" card with contextual next steps based on current RTR status
+   764→    - Regulatory reference note
+   765→  - Tenant view uses tabs labeled "My Application" and "Right to Rent" instead of "Properties" and "Right to Rent"
+   766→  - Non-tenant (admin/staff) view preserved exactly as before
+   767→- Updated page.tsx to pass `onNavigate={handleSectionChange}` prop to PropertyIntelligence component
+   768→- Ran lint check — passes with 0 errors (1 pre-existing warning)
+   769→- Verified dev server compiles successfully
+   770→
+   771→Stage Summary:
+   772→- RBAC: tenant role's property permission changed from view_all to view_own — enforces data isolation
+   773→- PropertyIntelligence: full tenant-specific view implemented with "My Application", read-only RTR status, guarantor eligibility, and document upload CTA
+   774→- Tenants can NEVER see other tenants' data — all applications filtered by session email
+   775→- Right to Rent tab for tenants shows read-only summary instead of the interactive 7-step wizard
+   776→- All existing non-tenant functionality preserved unchanged
+   777→
+   778→---
+   779→Task ID: 3
+   780→Agent: LandingPage Pitch Deck Agent
+   781→Task: Transform LoginPage into comprehensive pitch deck landing page
+   782→
+   783→Work Log:
+   784→- Read existing LoginPage.tsx, page.tsx, and worklog.md to understand current project structure
+   785→- Read rbac.ts to understand ROLE_DEFINITIONS and demo accounts
+   786→- Read Dialog component API from shadcn/ui
+   787→- Designed comprehensive landing page with 12 sections as specified
+   788→- Created LoginModal component using shadcn Dialog with email/password form and collapsible demo accounts
+   789→- Preserved all signIn('credentials', { redirect: false }) functionality
+   790→- Built AnimatedSection and StaggerChild components using framer-motion useInView for scroll-triggered animations
+   791→- Implemented all 12 sections: Hero, Problem, Solution, Platform Modules, Trust Ladder, Who It's For, How It Works, Pricing, Regulatory Compliance, About/Founder, Final CTA, Footer
+   792→- Used emerald/teal gradient color scheme consistent with project branding
+   793→- Made all CTAs ("Get Started", "Sign In", "Request Demo") open the login dialog
+   794→- Added smooth scroll navigation in sticky nav header
+   795→- Used red/orange color scheme for Problem section cards
+   796→- Used green gradient from light to dark for Trust Ladder levels on dark background
+   797→- Used slate-900 dark footer with regulatory compliance badges
+   798→- Ensured responsive design with mobile-first approach (sm:, md:, lg: breakpoints)
+   799→- Used existing shadcn/ui components: Card, Button, Badge, Dialog, Input, Separator
+   800→- Exported as default from same file path so page.tsx import still works
+   801→- Ran lint: 0 errors (1 pre-existing warning unrelated to changes)
+   802→- Verified dev server compiles and renders successfully
+   803→
+   804→Stage Summary:
+   805→- LoginPage.tsx fully transformed from simple login form to comprehensive pitch deck landing page
+   806→- Login functionality preserved as Dialog modal, triggered by all CTA buttons
+   807→- All 12 sections implemented with scroll-triggered Framer Motion animations
+   808→- Component still exported as default, page.tsx integration unchanged
+   809→- Lint passes, dev server compiles successfully
+   810→
+   811→---
+   812→Task ID: session-fixes
+   813→Agent: Main Agent
+   814→Task: Fix multiple issues across the platform based on user feedback
+   815→
+   816→Work Log:
+   817→- Fixed logout redirect: Changed from `signOut({ callbackUrl: '/' })` to `signOut({ redirect: false })` + `window.location.reload()` to preserve gateway URL
+   818→- Fixed Profile & Settings / Security dropdown navigation: Added `settingsTab` state and `handleSectionChange` with tab parameter; dropdown items now pass 'profile' or 'security' tab
+   819→- Fixed Settings component to accept `initialTab` prop and use it as `defaultValue` for Tabs
+   820→- Made search bar functional: Added `searchQuery` state, wired up onChange to navigate to Identity section, added clear button
+   821→- Added `searchQuery` and `onClearSearch` props to IdentityTrust component for filtering
+   822→- Fixed login modal not closing after successful sign-in: Added `result?.ok` check to close dialog via `onOpenChange(false)`
+   823→- Overhauled IdentityTrust component: Tenant view shows "My Profile" only, Identity Verifier sees "Pending Reviews" and review actions, search filter works
+   824→- Overhauled PropertyIntelligence: Tenant view shows "My Application" and "Right to Rent" only (no other tenants' data)
+   825→- Updated RBAC: Changed tenant property permission from `view_all` to `view_own`
+   826→- Enhanced LoginPage into comprehensive pitch deck landing page with 12 sections, login modal, and demo accounts
+   827→- Verified all fixes with browser testing: logout works, profile/security tabs navigate correctly, search filters identities, tenant can't see other tenants, identity verifier has review workflow
+   828→
+   829→Stage Summary:
+   830→- All 10 user-reported issues fixed and verified
+   831→- Landing page now serves as both a marketing website and investor pitch deck
+   832→- Role-based views properly restrict data visibility (tenant=own only, verifier=review workflow)
+   833→- Search functionality works across identity profiles
+   834→- Login modal properly closes on successful authentication
+   835→- Logout preserves gateway URL instead of redirecting to localhost:3000
+   836→

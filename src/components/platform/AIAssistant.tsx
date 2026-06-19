@@ -121,22 +121,35 @@ export default function AIAssistant() {
       setInput('');
       setIsLoading(true);
 
-      // Simulate AI response delay
-      await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 1200));
+      try {
+        // Pass full conversation history for multi-turn context (exclude the static welcome message)
+        const conversationHistory = messages
+          .filter((m) => m.id !== 'welcome')
+          .map((m) => ({ role: m.role, content: m.content }));
 
-      const response = generateMockResponse(content);
+        const res = await fetch('/api/ai-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: content.trim(), conversationHistory }),
+        });
 
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: response,
-        timestamp: new Date(),
-      };
+        const data = await res.json();
+        const responseText: string = data.response ?? generateMockResponse(content);
 
-      setMessages((prev) => [...prev, assistantMessage]);
-      setIsLoading(false);
+        setMessages((prev) => [
+          ...prev,
+          { id: `assistant-${Date.now()}`, role: 'assistant', content: responseText, timestamp: new Date() },
+        ]);
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { id: `assistant-${Date.now()}`, role: 'assistant', content: generateMockResponse(content), timestamp: new Date() },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [isLoading]
+    [isLoading, messages]
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -149,14 +162,14 @@ export default function AIAssistant() {
   };
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col max-h-[calc(100vh-8rem)]">
+    <div className="p-4 md:p-6 flex flex-col" style={{ height: 'calc(100vh - 8rem)', minHeight: 0, overflow: 'hidden' }}>
       <motion.div
-        className="flex-1 flex flex-col min-h-0"
+        className="flex-1 flex flex-col min-h-0 overflow-hidden"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
       >
-        <Card className="flex-1 flex flex-col min-h-0">
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -200,8 +213,8 @@ export default function AIAssistant() {
           <Separator />
 
           {/* Chat Messages Area */}
-          <CardContent className="flex-1 min-h-0 p-0">
-            <ScrollArea className="h-full max-h-[calc(100vh-22rem)]">
+          <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
+            <ScrollArea className="h-full" style={{ maxHeight: 'calc(100vh - 22rem)' }}>
               <div className="p-4 space-y-4" ref={scrollRef}>
                 <AnimatePresence mode="popLayout">
                   {messages.map((message) => (

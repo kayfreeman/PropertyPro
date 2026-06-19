@@ -98,11 +98,59 @@ interface IdentitiesResponse {
   total: number;
 }
 
+// Property LOV source (Identity & Trust → Property module)
+interface PropertyLite {
+  id: string;
+  address: string;
+  city: string;
+  postcode: string;
+  propertyType: string;
+}
+
+interface PropertiesResponse {
+  properties: PropertyLite[];
+  total: number;
+}
+
+// ── AML eligibility thresholds (Stage 3 — progression control) ──────────────
+// An identity profile must clear these thresholds before downstream AML checks
+// (CDD → Screening → EDD → Decision → SAR) can be executed against it.
+const AML_MIN_TRUST_LEVEL = 2;
+const AML_MIN_TRUST_SCORE = 50;
+
+interface EligibilityCriterion {
+  label: string;
+  met: boolean;
+  detail: string;
+}
+
+function evaluateEligibility(p: {
+  status: string;
+  trustLevel: number;
+  trustScore: number;
+  verifications?: { status: string }[];
+}): { eligible: boolean; criteria: EligibilityCriterion[]; reasons: string[] } {
+  const verifiedRecords = (p.verifications ?? []).filter((v) => ['verified', 'passed', 'completed'].includes(v.status)).length;
+  const criteria: EligibilityCriterion[] = [
+    { label: 'Identity status verified', met: p.status === 'verified', detail: p.status === 'verified' ? 'KYC baseline confirmed' : `Current status: ${p.status}` },
+    { label: `Trust Level ≥ ${AML_MIN_TRUST_LEVEL}`, met: p.trustLevel >= AML_MIN_TRUST_LEVEL, detail: `Profile is Level ${p.trustLevel}/5` },
+    { label: `Trust Score ≥ ${AML_MIN_TRUST_SCORE}`, met: p.trustScore >= AML_MIN_TRUST_SCORE, detail: `Profile score is ${Math.round(p.trustScore)}` },
+    { label: 'Active verification record', met: verifiedRecords > 0, detail: verifiedRecords > 0 ? `${verifiedRecords} verified check(s)` : 'No completed verification records' },
+  ];
+  const reasons = criteria.filter((c) => !c.met).map((c) => c.label);
+  return { eligible: reasons.length === 0, criteria, reasons };
+}
+
+function isProfileEligible(p: { status: string; trustLevel: number; trustScore: number; verifications?: { status: string }[] }): boolean {
+  return evaluateEligibility(p).eligible;
+}
+
 // ── Types ─────────────────────────────────────────────────
 type StepStatus = 'pending' | 'active' | 'completed' | 'failed';
 
 interface TransactionData {
   reference: string;
+  propertyId: string;
   propertyRef: string;
   transactionType: string;
   amount: number;
@@ -113,9 +161,13 @@ interface TransactionData {
 interface IdentityData {
   selectedProfile: string | null;
   profileName: string;
+  nationality: string | null;
   kycStatus: 'pending' | 'verified' | 'failed';
   trustLevel: number;
   verified: boolean;
+  eligible: boolean;
+  verifyAttempted: boolean;
+  eligibilityReasons: string[];
 }
 
 interface CDDData {
@@ -261,9 +313,14 @@ export default function AMLWorkflow() {
   const { data: identitiesData, isLoading: identitiesLoading } = useApi<IdentitiesResponse>('identities', '/api/identities');
   const identityProfiles = identitiesData?.identities ?? [];
 
+  // Fetch properties for the Property Reference LOV (Property module)
+  const { data: propertiesData, isLoading: propertiesLoading } = useApi<PropertiesResponse>('properties', '/api/properties');
+  const properties = propertiesData?.properties ?? [];
+
   // Step data
   const [transaction, setTransaction] = useState<TransactionData>({
     reference: generateTransactionRef(),
+    propertyId: '',
     propertyRef: '',
     transactionType: '',
     amount: 0,
@@ -272,6 +329,7 @@ export default function AMLWorkflow() {
   });
   const [identity, setIdentity] = useState<IdentityData & { trustScore: number; nationality: string; verifications: { verificationType: string; status: string; confidence: number }[]; credentials: { credentialType: string; verificationStatus: string }[] }>({
     selectedProfile: null, profileName: '', kycStatus: 'pending', trustLevel: 0, verified: false,
+    eligible: false, verifyAttempted: false, eligibilityReasons: [],
     trustScore: 0, nationality: '', verifications: [], credentials: [],
   });
   const [cdd, setCDD] = useState<CDDData>({
@@ -321,6 +379,8 @@ export default function AMLWorkflow() {
       const profile = identityProfiles.find(p => p.id === identity.selectedProfile);
       if (profile) {
         const kycStatus = profile.status === 'verified' ? 'verified' as const : profile.status === 'rejected' || profile.status === 'failed' ? 'failed' as const : 'pending' as const;
+        // Stage 3 — progression control: profile must clear all eligibility thresholds.
+        const { eligible, reasons } = evaluateEligibility(profile);
         setIdentity(prev => ({
           ...prev,
           profileName: `${profile.firstName} ${profile.lastName}`,
@@ -330,11 +390,18 @@ export default function AMLWorkflow() {
           nationality: profile.nationality ?? '',
           verifications: profile.verifications.map(v => ({ verificationType: v.verificationType, status: v.status, confidence: v.confidence })),
           credentials: profile.credentials.map(c => ({ credentialType: c.credentialType, verificationStatus: c.verificationStatus })),
-          verified: kycStatus === 'verified',
+          verifyAttempted: true,
+          eligible,
+          eligibilityReasons: reasons,
+          // `verified` is the downstream progression gate — only true when eligible.
+          verified: eligible,
         }));
-        if (kycStatus === 'verified') {
+        if (eligible) {
           setStepStatuses(prev => ({ ...prev, 2: 'completed', 3: 'active' }));
           setCurrentStep(3);
+        } else {
+          // Block progression and flag the stage for resolution.
+          setStepStatuses(prev => ({ ...prev, 2: 'failed' }));
         }
       }
       setIsProcessing(false);
@@ -409,6 +476,9 @@ export default function AMLWorkflow() {
     // Phase 3: Adverse Media
     setTimeout(() => {
       setScreeningProgress(100);
+      // Recompute all results in scope — each depends only on trustLevel
+      const sanctionsFinal = identity.trustLevel < 2 ? 'potential_match' : 'clear';
+      const pepFinal = identity.trustLevel < 2 ? 'match' : 'clear';
       const mediaResult = identity.trustLevel < 2 ? 'potential_match' : 'clear';
       setScreening(prev => ({
         ...prev,
@@ -422,17 +492,11 @@ export default function AMLWorkflow() {
         completedAt: new Date().toISOString(),
       }));
 
-      // Determine EDD requirement
-      const hasMatch = sanctionResult !== 'clear' || pepResult !== 'clear' || mediaResult !== 'clear';
+      const hasMatch = sanctionsFinal !== 'clear' || pepFinal !== 'clear' || mediaResult !== 'clear';
       setEDD(prev => ({ ...prev, required: hasMatch }));
       setStepStatuses(prev => ({ ...prev, 4: 'completed', 5: 'active' }));
       setCurrentStep(5);
     }, 6500);
-
-    // Note: these values mirror the closure logic used inside timeouts above
-    void (identity.trustLevel < 2 ? 'potential_match' : 'clear'); // sanctionResult
-    void (identity.trustLevel < 2 ? 'match' : 'clear'); // pepResult
-    void (identity.trustLevel < 2 ? 'potential_match' : 'clear'); // mediaResult
   }, [identity.trustLevel]);
 
   // ── Step 5: EDD ──────────────────────────────────────
@@ -539,6 +603,8 @@ export default function AMLWorkflow() {
           setTransaction={setTransaction}
           onInitialize={handleInitializeTransaction}
           isProcessing={isProcessing}
+          properties={properties}
+          propertiesLoading={propertiesLoading}
         />;
       case 2:
         return <Step2Identity
@@ -626,7 +692,7 @@ export default function AMLWorkflow() {
                       style={{
                         backgroundColor: isActive ? step.color + '20' : isCompleted ? step.color : undefined,
                         borderColor: isActive ? step.color : undefined,
-                        ringColor: isActive ? step.color : undefined,
+                        outline: isActive ? `2px solid ${step.color}` : undefined,
                       }}
                       whileHover={isCompleted || isActive ? { scale: 1.1 } : {}}
                       whileTap={isCompleted || isActive ? { scale: 0.95 } : {}}
@@ -731,11 +797,15 @@ function Step1Transaction({
   setTransaction,
   onInitialize,
   isProcessing,
+  properties,
+  propertiesLoading,
 }: {
   transaction: TransactionData;
   setTransaction: React.Dispatch<React.SetStateAction<TransactionData>>;
   onInitialize: () => void;
   isProcessing: boolean;
+  properties: PropertyLite[];
+  propertiesLoading: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -764,12 +834,47 @@ function Step1Transaction({
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Property Reference</Label>
-            <Input
-              placeholder="e.g., PROP-2024-00123"
-              value={transaction.propertyRef}
-              onChange={(e) => setTransaction(prev => ({ ...prev, propertyRef: e.target.value }))}
-              disabled={transaction.initialized}
-            />
+            {propertiesLoading ? (
+              <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50">
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Loading properties...</span>
+              </div>
+            ) : (
+              <Select
+                value={transaction.propertyId}
+                onValueChange={(id) => {
+                  const p = properties.find((x) => x.id === id);
+                  setTransaction(prev => ({
+                    ...prev,
+                    propertyId: id,
+                    propertyRef: p ? `PR-${p.postcode.replace(/\s+/g, '')}-${p.id.slice(-4).toUpperCase()}` : '',
+                  }));
+                }}
+                disabled={transaction.initialized}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a property..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {properties.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">No properties available.</div>
+                  ) : (
+                    properties.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <span className="flex items-center gap-2">
+                          <Landmark className="size-3.5 text-muted-foreground" />
+                          <span>{p.address}</span>
+                          <span className="text-muted-foreground text-xs">· {p.city}, {p.postcode}</span>
+                        </span>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+            {transaction.propertyRef && (
+              <p className="text-[10px] text-muted-foreground">Reference: <span className="font-mono">{transaction.propertyRef}</span></p>
+            )}
           </div>
           <div className="space-y-2">
             <Label className="text-sm font-medium">Transaction Type</Label>
@@ -805,7 +910,7 @@ function Step1Transaction({
           </div>
           <Button
             onClick={onInitialize}
-            disabled={isProcessing || transaction.initialized || !transaction.transactionType || !transaction.amount}
+            disabled={isProcessing || transaction.initialized || !transaction.propertyId || !transaction.transactionType || !transaction.amount}
             className="w-full bg-teal-600 hover:bg-teal-700 gap-2"
           >
             {isProcessing ? (
@@ -911,6 +1016,16 @@ function Step2Identity({
   identitiesLoading: boolean;
 }) {
   const selectedApiProfile = identityProfiles.find(p => p.id === identity.selectedProfile);
+  const [eligibleOnly, setEligibleOnly] = useState(true);
+
+  // Stage 2 — present eligible (verified) individuals, ordered eligible-first.
+  const eligibleCount = identityProfiles.filter(isProfileEligible).length;
+  const listedProfiles = (eligibleOnly ? identityProfiles.filter(isProfileEligible) : identityProfiles)
+    .slice()
+    .sort((a, b) => Number(isProfileEligible(b)) - Number(isProfileEligible(a)) || b.trustLevel - a.trustLevel);
+
+  // Live eligibility assessment for the currently-selected profile (Stage 3).
+  const selectedEligibility = selectedApiProfile ? evaluateEligibility(selectedApiProfile) : null;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -936,7 +1051,21 @@ function Step2Identity({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Select Identity Profile</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Select Identity Profile</Label>
+              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                <Checkbox checked={eligibleOnly} onCheckedChange={(v) => setEligibleOnly(!!v)} className="size-3.5" />
+                Eligible only
+              </label>
+            </div>
+            {/* Eligibility summary — list of eligible persons based on verification data */}
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <ShieldCheck className="size-3.5 text-teal-600" />
+              <span>
+                <span className="font-semibold text-teal-700">{eligibleCount}</span> of {identityProfiles.length} verified &amp; AML-eligible
+                <span className="text-muted-foreground/70"> (verified · Trust ≥ {AML_MIN_TRUST_LEVEL} · Score ≥ {AML_MIN_TRUST_SCORE})</span>
+              </span>
+            </div>
             {identitiesLoading ? (
               <div className="flex items-center gap-2 h-10 px-3 rounded-md border bg-muted/50">
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -959,21 +1088,29 @@ function Step2Identity({
                       nationality: profile.nationality ?? '',
                       verifications: profile.verifications.map(v => ({ verificationType: v.verificationType, status: v.status, confidence: v.confidence })),
                       credentials: profile.credentials.map(c => ({ credentialType: c.credentialType, verificationStatus: c.verificationStatus })),
+                      // reset prior verification/eligibility state on re-selection
+                      verified: false,
+                      eligible: false,
+                      verifyAttempted: false,
+                      eligibilityReasons: [],
                     }));
                   }
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Search or select a profile..." />
+                  <SelectValue placeholder="Search or select a verified profile..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {identityProfiles.length === 0 ? (
+                  {listedProfiles.length === 0 ? (
                     <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                      No identity profiles found. Create profiles in Identity & Trust first.
+                      {identityProfiles.length === 0
+                        ? 'No identity profiles found. Create profiles in Identity & Trust first.'
+                        : 'No eligible profiles. Toggle off “Eligible only” to view all.'}
                     </div>
                   ) : (
-                    identityProfiles.map((p) => {
+                    listedProfiles.map((p) => {
                       const trustLevelData = TRUST_LEVELS[p.trustLevel] ?? TRUST_LEVELS[0];
+                      const eligible = isProfileEligible(p);
                       return (
                         <SelectItem key={p.id} value={p.id}>
                           <div className="flex items-center gap-2">
@@ -981,8 +1118,15 @@ function Step2Identity({
                             <Badge variant="outline" className="text-[10px] px-1" style={{ color: trustLevelData.color, borderColor: trustLevelData.color + '40', backgroundColor: trustLevelData.bgColor }}>
                               L{p.trustLevel}
                             </Badge>
-                            <Badge variant="outline" className="text-[10px] px-1" style={(() => { const s = getStatusStyle(p.status); return { color: s.color, borderColor: s.color + '40', backgroundColor: s.bgColor }; })()}>
-                              {p.status}
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] px-1 gap-0.5"
+                              style={eligible
+                                ? { color: '#059669', borderColor: '#05966940', backgroundColor: '#ecfdf5' }
+                                : { color: '#d97706', borderColor: '#d9770640', backgroundColor: '#fffbeb' }}
+                            >
+                              {eligible ? <CheckCircle2 className="size-2.5" /> : <AlertTriangle className="size-2.5" />}
+                              {eligible ? 'Eligible' : 'Not eligible'}
                             </Badge>
                           </div>
                         </SelectItem>
@@ -991,6 +1135,14 @@ function Step2Identity({
                   )}
                 </SelectContent>
               </Select>
+            )}
+            {/* Inline eligibility hint for the selected profile (pre-verification) */}
+            {selectedApiProfile && selectedEligibility && !identity.verifyAttempted && (
+              <p className={`text-[11px] ${selectedEligibility.eligible ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {selectedEligibility.eligible
+                  ? 'Profile meets AML eligibility thresholds — ready to verify.'
+                  : `Profile does not meet: ${selectedEligibility.reasons.join(', ')}.`}
+              </p>
             )}
           </div>
 
@@ -1176,12 +1328,57 @@ function Step2Identity({
                 </div>
               </div>
 
+              {/* Stage 3 — Eligibility Threshold Assessment (progression control) */}
+              {selectedEligibility && (
+                <div className="rounded-lg border p-3 bg-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium">AML Eligibility Criteria</p>
+                    <Badge
+                      className="text-[10px] border-0 gap-1"
+                      style={selectedEligibility.eligible
+                        ? { color: '#059669', backgroundColor: '#ecfdf5' }
+                        : { color: '#d97706', backgroundColor: '#fffbeb' }}
+                    >
+                      {selectedEligibility.eligible ? <Unlock className="size-3" /> : <Lock className="size-3" />}
+                      {selectedEligibility.eligible ? 'Thresholds met' : 'Thresholds not met'}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1.5">
+                    {selectedEligibility.criteria.map((c) => (
+                      <div key={c.label} className="flex items-center gap-2 text-xs">
+                        {c.met ? <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" /> : <XCircle className="size-3.5 text-amber-500 shrink-0" />}
+                        <span className={c.met ? '' : 'text-muted-foreground'}>{c.label}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">{c.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Positive eligibility — cleared for SAR workflow continuation */}
               {identity.verified && (
                 <Alert className="border-emerald-200 bg-emerald-50">
                   <CheckCircle2 className="size-4 text-emerald-600" />
-                  <AlertTitle className="text-emerald-800 text-sm">KYC Baseline Established</AlertTitle>
+                  <AlertTitle className="text-emerald-800 text-sm">Eligibility Confirmed</AlertTitle>
                   <AlertDescription className="text-emerald-700 text-xs">
-                    Identity profile linked. Proceed to Customer Due Diligence.
+                    Verification thresholds met — positive eligibility for SAR workflow continuation. Proceed to Customer Due Diligence.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Blocked — verified attempt but thresholds not met: prompt resolution */}
+              {identity.verifyAttempted && !identity.eligible && (
+                <Alert className="border-amber-200 bg-amber-50">
+                  <Ban className="size-4 text-amber-600" />
+                  <AlertTitle className="text-amber-800 text-sm">Progression Blocked</AlertTitle>
+                  <AlertDescription className="text-amber-700 text-xs space-y-1">
+                    <p>This profile does not meet the required verification thresholds, so downstream AML checks are blocked.</p>
+                    {identity.eligibilityReasons.length > 0 && (
+                      <ul className="list-disc list-inside">
+                        {identity.eligibilityReasons.map((r) => <li key={r}>{r}</li>)}
+                      </ul>
+                    )}
+                    <p className="font-medium">Resolution: complete the outstanding verification in the Identity &amp; Trust module, then re-select this profile.</p>
                   </AlertDescription>
                 </Alert>
               )}

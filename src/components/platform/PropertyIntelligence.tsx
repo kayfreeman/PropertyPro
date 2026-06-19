@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   Building2,
   CheckCircle2,
@@ -28,6 +30,19 @@ import {
   Bell,
   Lock,
   ExternalLink,
+  UserPlus,
+  School,
+  Landmark,
+  HeartHandshake,
+  Send,
+  Search,
+  SlidersHorizontal,
+  PoundSterling,
+  Zap,
+  Sparkles,
+  BedDouble,
+  Loader2,
+  Gauge,
 } from 'lucide-react';
 import {
   Card,
@@ -46,8 +61,11 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useApi } from '@/hooks/use-api';
 import { useSession } from 'next-auth/react';
@@ -58,6 +76,8 @@ import {
   formatDate,
 } from '@/lib/platform-data';
 import RightToRentFlow from '@/components/platform/RightToRentFlow';
+import StatusIndicator from '@/components/platform/StatusIndicator';
+import { getStatus, type StatusDomain } from '@/lib/status';
 
 // Types based on API response
 interface PropertyApplication {
@@ -95,6 +115,10 @@ interface Property {
   country: string;
   propertyType: string;
   bedrooms: number | null;
+  epcRating: string | null;
+  hmoLicensed: boolean;
+  lastSalePrice: number | null;
+  transactionType: string | null;
   complianceStatus: string;
   lastInspection: string | null;
   createdAt: string;
@@ -129,7 +153,14 @@ const staggerContainer = {
   },
 };
 
-function StatusBadge({ status }: { status: string }) {
+// When a `domain` is supplied the badge resolves through the unified status
+// framework (src/lib/status.ts) so labels/colours/icons are consistent across
+// Application, Right to Rent, Compliance and Risk. Without a domain it falls
+// back to the legacy style.
+function StatusBadge({ status, domain }: { status: string; domain?: StatusDomain }) {
+  if (domain) {
+    return <StatusIndicator domain={domain} status={status} />;
+  }
   const style = getStatusStyle(status);
   return (
     <Badge
@@ -178,11 +209,13 @@ function TenantPropertyView({
   allApplications,
   sessionEmail,
   onNavigate,
+  onFindProperties,
 }: {
   properties: Property[];
   allApplications: PropertyApplication[];
   sessionEmail: string;
   onNavigate?: (section: string) => void;
+  onFindProperties?: () => void;
 }) {
   // Filter to only the tenant's own applications
   const myApplications = allApplications.filter(
@@ -275,7 +308,7 @@ function TenantPropertyView({
                   <p className="text-sm text-muted-foreground">Application</p>
                   <p className="text-lg font-bold mt-1">
                     {myApplications.length > 0 ? (
-                      <StatusBadge status={myApplications[0].status} />
+                      <StatusBadge status={myApplications[0].status} domain="application" />
                     ) : (
                       <span className="text-muted-foreground text-base">No application</span>
                     )}
@@ -397,7 +430,7 @@ function TenantPropertyView({
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <h4 className="font-semibold text-sm">Application Status</h4>
-                              <StatusBadge status={app.status} />
+                              <StatusBadge status={app.status} domain="application" />
                             </div>
                             <Separator />
                             <div className="grid grid-cols-2 gap-3">
@@ -458,7 +491,7 @@ function TenantPropertyView({
                                         {property.bedrooms} bed{property.bedrooms > 1 ? 's' : ''}
                                       </Badge>
                                     )}
-                                    <StatusBadge status={property.complianceStatus} />
+                                    <StatusBadge status={property.complianceStatus} domain="compliance" />
                                   </div>
                                 </div>
                               ) : (
@@ -478,7 +511,7 @@ function TenantPropertyView({
                               </div>
                               <div className="text-center p-2 rounded-lg border">
                                 <p className="text-[10px] text-muted-foreground mb-1">Right to Rent</p>
-                                <StatusBadge status={app.rightToRent} />
+                                <StatusBadge status={app.rightToRent} domain="rtr" />
                               </div>
                             </div>
                           </div>
@@ -491,16 +524,16 @@ function TenantPropertyView({
             ) : (
               <div className="text-center py-12">
                 <Building2 className="size-12 text-muted-foreground/40 mx-auto mb-3" />
-                <p className="font-medium text-muted-foreground">No Property Applications Found</p>
+                <p className="font-medium text-muted-foreground">No Property Applications Yet</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  You haven&apos;t submitted any property applications yet. Complete your onboarding to get started.
+                  Your identity is verified — search the catalogue and apply to a property to get started.
                 </p>
                 <Button
                   className="mt-4 bg-teal-600 hover:bg-teal-700 text-white gap-2"
-                  onClick={() => onNavigate?.('identity')}
+                  onClick={() => onFindProperties?.()}
                 >
-                  <Upload className="size-4" />
-                  Start Onboarding
+                  <Search className="size-4" />
+                  Find Properties
                 </Button>
               </div>
             )}
@@ -746,14 +779,84 @@ function TenantPropertyView({
   );
 }
 
+// ===================== RTR LIFECYCLE PROGRESS (AC5) =====================
+
+// The Right to Rent happy-path lifecycle. Off-path terminal states (rejected,
+// expired, additional_info_required) are surfaced separately when active.
+const RTR_HAPPY_PATH = ['not_started', 'in_progress', 'verification_pending', 'approved'] as const;
+
+function RtrLifecycleTracker({ rawStatus }: { rawStatus: string }) {
+  const current = getStatus('rtr', rawStatus); // resolves legacy aliases (verified→approved, pending→verification_pending)
+  const offPath = ['rejected', 'expired', 'additional_info_required'].includes(current.key);
+  const activeIndex = offPath ? -1 : RTR_HAPPY_PATH.indexOf(current.key as typeof RTR_HAPPY_PATH[number]);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <TrendingUp className="size-4 text-teal-600" />
+          Right to Rent Lifecycle
+        </CardTitle>
+        <CardDescription>Track your progress through each stage of the Immigration Act 2014 check.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Stepper */}
+        <div className="flex items-center">
+          {RTR_HAPPY_PATH.map((key, idx) => {
+            const step = getStatus('rtr', key);
+            const reached = !offPath && idx <= activeIndex;
+            const isCurrent = !offPath && idx === activeIndex;
+            return (
+              <div key={key} className="flex items-center flex-1 last:flex-none">
+                <div className="flex flex-col items-center gap-1.5 shrink-0">
+                  <div
+                    className="size-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors"
+                    style={
+                      reached
+                        ? { backgroundColor: step.color, borderColor: step.color, color: '#fff' }
+                        : { backgroundColor: '#fff', borderColor: '#e2e8f0', color: '#94a3b8' }
+                    }
+                  >
+                    {reached && idx < activeIndex ? <Check className="size-4" /> : idx + 1}
+                  </div>
+                  <span className={`text-[10px] text-center leading-tight max-w-[72px] ${isCurrent ? 'font-semibold' : 'text-muted-foreground'}`} style={isCurrent ? { color: step.color } : {}}>
+                    {step.label}
+                  </span>
+                </div>
+                {idx < RTR_HAPPY_PATH.length - 1 && (
+                  <div className="flex-1 h-0.5 mx-1 rounded" style={{ backgroundColor: !offPath && idx < activeIndex ? current.color : '#e2e8f0' }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Current status detail with progress + action hint */}
+        <div className="rounded-lg border bg-slate-50/60 p-3">
+          <StatusIndicator domain="rtr" status={rawStatus} variant="detailed" showProgress />
+        </div>
+
+        {offPath && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+            <span>This check is off the standard path ({current.label}). Follow the action above to get back on track.</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ===================== TENANT RTR READ-ONLY SUMMARY =====================
 
 function TenantRightToRentSummary({
   allApplications,
   sessionEmail,
+  trustLevel = 0,
 }: {
   allApplications: PropertyApplication[];
   sessionEmail: string;
+  trustLevel?: number;
 }) {
   const myApps = allApplications.filter((a) => a.profile.email === sessionEmail);
   const myRtrStatus = myApps.length > 0 ? myApps[0].rightToRent : 'not_started';
@@ -840,6 +943,11 @@ function TenantRightToRentSummary({
             </div>
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* Lifecycle progress tracker (AC5) */}
+      <motion.div variants={fadeInUp}>
+        <RtrLifecycleTracker rawStatus={myRtrStatus} />
       </motion.div>
 
       {/* Main Status Card */}
@@ -944,7 +1052,7 @@ function TenantRightToRentSummary({
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Status</span>
-                    <StatusBadge status={myRtrStatus} />
+                    <StatusBadge status={myRtrStatus} domain="rtr" />
                   </div>
                 </CardContent>
               </Card>
@@ -1054,16 +1162,661 @@ function TenantRightToRentSummary({
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Housing Interest Registration + Guarantor (Items 8 & 9) */}
+      <motion.div variants={fadeInUp}>
+        <Separator className="my-4" />
+        <div className="mb-4">
+          <h3 className="text-base font-semibold">Register Housing Interest</h3>
+          <p className="text-sm text-muted-foreground">Select the type of housing you would like to apply for. Trust Level 2+ required.</p>
+        </div>
+        <HousingInterestRegistration sessionEmail={sessionEmail} trustLevel={trustLevel} profileId={myApps[0]?.profile.id} />
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ===================== HOUSING INTEREST REGISTRATION =====================
+
+const HOUSING_TYPES = [
+  { id: 'council', label: 'Council Housing', desc: 'Local authority managed social housing', icon: <Landmark className="size-5" />, color: '#0d9488', bg: '#f0fdfa' },
+  { id: 'private', label: 'Private Rental', desc: 'Privately owned rental properties', icon: <Home className="size-5" />, color: '#10b981', bg: '#ecfdf5' },
+  { id: 'housing_association', label: 'Housing Association', desc: 'Registered social landlord properties', icon: <HeartHandshake className="size-5" />, color: '#8b5cf6', bg: '#f5f3ff' },
+  { id: 'emergency', label: 'Emergency Housing', desc: 'Temporary accommodation for urgent need', icon: <Bell className="size-5" />, color: '#f59e0b', bg: '#fffbeb' },
+];
+
+function HousingInterestRegistration({ sessionEmail, trustLevel, profileId }: { sessionEmail: string; trustLevel: number; profileId?: string }) {
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [guarantorName, setGuarantorName] = useState('');
+  const [guarantorEmail, setGuarantorEmail] = useState('');
+  const [guarantorPhone, setGuarantorPhone] = useState('');
+  const [guarantorConsent, setGuarantorConsent] = useState(false);
+  const [docPassportUploaded, setDocPassportUploaded] = useState(false);
+  const [docAddressUploaded, setDocAddressUploaded] = useState(false);
+  const [docIncomeUploaded, setDocIncomeUploaded] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [addGuarantor, setAddGuarantor] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const toggleType = useCallback((id: string) => {
+    setSelectedTypes(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+  }, []);
+
+  const simulateUpload = (setter: (v: boolean) => void) => {
+    setTimeout(() => setter(true), 1200 + Math.random() * 800);
+  };
+
+  if (trustLevel < 2) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-6 text-center">
+          <Lock className="size-10 text-amber-500 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-amber-800">Identity Verification Required</h3>
+          <p className="text-sm text-amber-600 mt-1 max-w-sm mx-auto">
+            You must complete biometric verification (Trust Level 2) before registering housing interest or initiating Right to Rent checks.
+          </p>
+          <Badge className="mt-3 bg-amber-100 text-amber-700 border-amber-300">Trust Level {trustLevel}/5 — Minimum Level 2 Required</Badge>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (submitted) {
+    return (
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+        <Card className="border-emerald-200 bg-emerald-50">
+          <CardContent className="p-6 text-center space-y-4">
+            <CheckCircle2 className="size-12 text-emerald-500 mx-auto" />
+            <h3 className="text-lg font-bold text-emerald-800">Housing Interest Registered</h3>
+            <p className="text-sm text-emerald-600">
+              Your interest in {selectedTypes.length} housing type(s) has been registered. A compliance officer will review your application and contact you at {sessionEmail}.
+            </p>
+            {addGuarantor && guarantorName && (
+              <div className="rounded-lg border border-emerald-200 bg-white p-3 text-left">
+                <p className="text-xs font-medium text-emerald-700">Guarantor Submitted:</p>
+                <p className="text-sm">{guarantorName}</p>
+                <p className="text-xs text-muted-foreground">{guarantorEmail}</p>
+                <div className="flex gap-2 mt-2">
+                  {docPassportUploaded && <Badge className="text-[10px] bg-emerald-100 text-emerald-700">ID Uploaded</Badge>}
+                  {docAddressUploaded && <Badge className="text-[10px] bg-emerald-100 text-emerald-700">Address Uploaded</Badge>}
+                  {docIncomeUploaded && <Badge className="text-[10px] bg-emerald-100 text-emerald-700">Income Uploaded</Badge>}
+                  {guarantorConsent && <Badge className="text-[10px] bg-emerald-100 text-emerald-700">Consent Given</Badge>}
+                </div>
+              </div>
+            )}
+            <Button size="sm" variant="outline" onClick={() => { setSubmitted(false); setSelectedTypes([]); }}>
+              Register Another Interest
+            </Button>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <UserPlus className="size-4 text-teal-600" />
+            Register Housing Interest
+          </CardTitle>
+          <CardDescription>Select the types of housing you are interested in. Your verified identity data will be pre-populated.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Pre-populated profile data */}
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Pre-populated from verified profile</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline" className="text-xs gap-1"><CheckCircle2 className="size-3 text-emerald-500" /> Email: {sessionEmail}</Badge>
+              <Badge variant="outline" className="text-xs gap-1"><CheckCircle2 className="size-3 text-emerald-500" /> Trust Level {trustLevel} Verified</Badge>
+              <Badge variant="outline" className="text-xs gap-1"><CheckCircle2 className="size-3 text-emerald-500" /> R2R Eligible</Badge>
+            </div>
+          </div>
+
+          {/* Housing type selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {HOUSING_TYPES.map(type => (
+              <button
+                key={type.id}
+                onClick={() => toggleType(type.id)}
+                className={`rounded-lg border-2 p-4 text-left transition-all ${selectedTypes.includes(type.id) ? 'shadow-sm' : 'border-muted hover:border-muted-foreground/30'}`}
+                style={selectedTypes.includes(type.id) ? { borderColor: type.color, backgroundColor: type.bg } : {}}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5" style={{ color: selectedTypes.includes(type.id) ? type.color : '#94a3b8' }}>{type.icon}</div>
+                  <div>
+                    <p className="text-sm font-medium">{type.label}</p>
+                    <p className="text-xs text-muted-foreground">{type.desc}</p>
+                  </div>
+                  {selectedTypes.includes(type.id) && <CheckCircle2 className="ml-auto size-4 shrink-0" style={{ color: type.color }} />}
+                </div>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Guarantor section (Item 9) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Guarantor Submission</CardTitle>
+              <CardDescription>Add a guarantor to strengthen your application (optional if Trust Level 3+)</CardDescription>
+            </div>
+            <Switch checked={addGuarantor} onCheckedChange={setAddGuarantor} />
+          </div>
+        </CardHeader>
+        {addGuarantor && (
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Guarantor Full Name</Label>
+                <Input placeholder="Jane Smith" value={guarantorName} onChange={e => setGuarantorName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Guarantor Email</Label>
+                <Input type="email" placeholder="jane.smith@example.com" value={guarantorEmail} onChange={e => setGuarantorEmail(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Guarantor Phone</Label>
+                <Input placeholder="+44 7700 900000" value={guarantorPhone} onChange={e => setGuarantorPhone(e.target.value)} />
+              </div>
+            </div>
+            <Separator />
+            <p className="text-xs font-medium text-muted-foreground">Guarantor Documents</p>
+            <div className="space-y-2">
+              {[
+                { label: 'Identification Document (Passport/ID)', state: docPassportUploaded, setter: setDocPassportUploaded },
+                { label: 'Proof of Address', state: docAddressUploaded, setter: setDocAddressUploaded },
+                { label: 'Proof of Income', state: docIncomeUploaded, setter: setDocIncomeUploaded },
+              ].map(doc => (
+                <div key={doc.label} className="flex items-center justify-between rounded-lg border p-3">
+                  <span className="text-sm">{doc.label}</span>
+                  {doc.state ? (
+                    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 gap-1 text-xs"><CheckCircle2 className="size-3" /> Uploaded</Badge>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => simulateUpload(doc.setter)}>
+                      <Upload className="size-3" /> Upload
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <input
+                type="checkbox"
+                id="guarantor-consent"
+                checked={guarantorConsent}
+                onChange={e => setGuarantorConsent(e.target.checked)}
+                className="mt-0.5"
+              />
+              <label htmlFor="guarantor-consent" className="text-xs text-amber-700 cursor-pointer">
+                I confirm that the guarantor has provided informed consent for their personal data to be processed for this application under UK GDPR and MLR 2017.
+              </label>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Submit */}
+      <Button
+        className="w-full bg-teal-600 hover:bg-teal-700 text-white gap-2"
+        disabled={selectedTypes.length === 0 || isSubmitting}
+        onClick={async () => {
+          if (!profileId) { setSubmitted(true); return; }
+          setIsSubmitting(true);
+          try {
+            const [firstName = '', lastName = ''] = (addGuarantor ? guarantorName : sessionEmail).split(' ');
+            const payload = {
+              profileId,
+              firstName: addGuarantor ? (guarantorName.split(' ')[0] ?? '') : sessionEmail,
+              lastName: addGuarantor ? (guarantorName.split(' ').slice(1).join(' ') || ' ') : '',
+              email: addGuarantor ? guarantorEmail : sessionEmail,
+              phone: addGuarantor ? guarantorPhone : undefined,
+              housingTypes: selectedTypes,
+              passportRef: docPassportUploaded ? `PASSPORT-REF-${Date.now()}` : undefined,
+              proofOfAddressRef: docAddressUploaded ? `ADDRESS-REF-${Date.now()}` : undefined,
+              incomeProofRef: docIncomeUploaded ? `INCOME-REF-${Date.now()}` : undefined,
+              consentGiven: addGuarantor ? guarantorConsent : true,
+            };
+            await fetch('/api/guarantors', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          } catch {
+            // Submission recorded locally even if API call fails
+          } finally {
+            setIsSubmitting(false);
+            setSubmitted(true);
+          }
+        }}
+      >
+        <Send className="size-4" />
+        {isSubmitting ? 'Submitting...' : 'Submit Housing Interest Application'}
+      </Button>
+    </div>
+  );
+}
+
+// ===================== PROPERTY SEARCH & RENTAL READINESS (AC2/AC3/AC4) =====================
+
+// Indicative monthly rent — the demo Property model carries sale price, not rent,
+// so we derive a deterministic indicative figure for affordability matching.
+function indicativeMonthlyRent(p: Property): number {
+  if (p.lastSalePrice && p.lastSalePrice > 0) {
+    // ~0.45% of capital value per month (≈5.4% gross annual yield)
+    return Math.round((p.lastSalePrice * 0.0045) / 50) * 50;
+  }
+  const base: Record<string, number> = { residential: 1100, hmo: 650, commercial: 2400 };
+  const beds = p.bedrooms ?? 1;
+  const cityPremium = /london|sw|se|ec|wc|w1|n1/i.test(`${p.city} ${p.postcode}`) ? 1.65 : 1;
+  return Math.round(((base[p.propertyType] ?? 1100) + beds * 320) * cityPremium / 50) * 50;
+}
+
+interface ReadinessInput {
+  identityVerified: boolean;
+  trustLevel: number;
+  rtrStatus: string;
+  complianceClear: boolean;
+  riskClear: boolean;
+}
+
+// Overall rental-readiness score (0–100) derived from compliance, affordability,
+// trust and risk indicators — AC2 "rental readiness" requirement.
+function rentalReadiness(input: ReadinessInput): {
+  score: number;
+  label: string;
+  tone: 'success' | 'warning' | 'danger';
+  factors: { label: string; met: boolean; points: number }[];
+} {
+  const rtrOk = ['verified', 'approved'].includes(input.rtrStatus);
+  const rtrInflight = ['pending', 'in_progress', 'verification_pending'].includes(input.rtrStatus);
+  const factors = [
+    { label: 'Identity verified', met: input.identityVerified, points: input.identityVerified ? 35 : 0 },
+    { label: `Trust Level ${input.trustLevel}/5`, met: input.trustLevel >= 3, points: input.trustLevel >= 3 ? 25 : input.trustLevel >= 2 ? 15 : 5 },
+    { label: 'Right to Rent confirmed', met: rtrOk, points: rtrOk ? 25 : rtrInflight ? 12 : 0 },
+    { label: 'Compliance & risk clear', met: input.complianceClear && input.riskClear, points: (input.complianceClear ? 8 : 0) + (input.riskClear ? 7 : 0) },
+  ];
+  const score = Math.min(100, factors.reduce((s, f) => s + f.points, 0));
+  const tone = score >= 75 ? 'success' : score >= 45 ? 'warning' : 'danger';
+  const label = score >= 75 ? 'Strong — ready to apply' : score >= 45 ? 'Moderate — applications accepted' : 'Building — complete more steps';
+  return { score, label, tone, factors };
+}
+
+function EpcBadge({ rating }: { rating: string | null }) {
+  if (!rating) return null;
+  const band = rating.toUpperCase();
+  const color = ['A', 'B'].includes(band) ? '#059669' : ['C', 'D'].includes(band) ? '#d97706' : '#dc2626';
+  const bg = ['A', 'B'].includes(band) ? '#ecfdf5' : ['C', 'D'].includes(band) ? '#fffbeb' : '#fef2f2';
+  return (
+    <Badge className="text-[10px] font-semibold gap-1" style={{ color, backgroundColor: bg, borderColor: 'transparent' }}>
+      <Zap className="size-3" /> EPC {band}
+    </Badge>
+  );
+}
+
+function FindPropertiesView({
+  readiness,
+  onApplied,
+}: {
+  readiness: { score: number; label: string; tone: 'success' | 'warning' | 'danger'; factors: { label: string; met: boolean; points: number }[] };
+  onApplied: () => void;
+}) {
+  const { data: session } = useSession();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useApi<PropertiesResponse>(
+    'properties-discover',
+    '/api/properties',
+    true,
+    { userId: session?.user?.id || '', role: session?.user?.role || '', discover: 'true' }
+  );
+
+  const properties = data?.properties ?? [];
+
+  // Filters
+  const [location, setLocation] = useState('');
+  const [type, setType] = useState<string>('all');
+  const [minBeds, setMinBeds] = useState<string>('any');
+  const [maxBudget, setMaxBudget] = useState<string>('');
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+
+  const sessionEmail = session?.user?.email || '';
+
+  const enriched = useMemo(() => {
+    return properties.map((p) => {
+      const rent = indicativeMonthlyRent(p);
+      const alreadyApplied = p.applications.some((a) => a.profile.email === sessionEmail);
+      return { property: p, rent, alreadyApplied };
+    });
+  }, [properties, sessionEmail]);
+
+  const filtered = useMemo(() => {
+    return enriched.filter(({ property, rent }) => {
+      if (location) {
+        const q = location.toLowerCase();
+        const hay = `${property.address} ${property.city} ${property.postcode}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (type !== 'all' && property.propertyType !== type) return false;
+      if (minBeds !== 'any' && (property.bedrooms ?? 0) < Number(minBeds)) return false;
+      if (maxBudget && rent > Number(maxBudget)) return false;
+      return true;
+    });
+  }, [enriched, location, type, minBeds, maxBudget]);
+
+  const handleApply = async (property: Property, rent: number) => {
+    setApplyingId(property.id);
+    try {
+      const res = await fetch('/api/property-applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propertyId: property.id,
+          applicationType: 'rental',
+          monthlyAmount: rent,
+          depositAmount: rent * 5, // typical 5-week deposit cap (Tenant Fees Act 2019)
+          rightToRent: 'pending',
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(body?.error || 'Could not submit application', {
+          description: body?.code === 'IDENTITY_NOT_VERIFIED' ? 'Complete identity verification first.' : undefined,
+        });
+        return;
+      }
+      toast.success('Application submitted', {
+        description: `Your application for ${property.address} is now in My Applications.`,
+      });
+      // AC4 — refresh My Applications + readiness sources
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['properties'] }),
+        queryClient.invalidateQueries({ queryKey: ['properties-discover'] }),
+        queryClient.invalidateQueries({ queryKey: ['identities'] }),
+      ]);
+      onApplied();
+    } catch {
+      toast.error('Network error — please try again');
+    } finally {
+      setApplyingId(null);
+    }
+  };
+
+  const toneColor = readiness.tone === 'success' ? '#059669' : readiness.tone === 'warning' ? '#d97706' : '#dc2626';
+  const toneBg = readiness.tone === 'success' ? '#ecfdf5' : readiness.tone === 'warning' ? '#fffbeb' : '#fef2f2';
+
+  return (
+    <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="visible">
+      {/* Rental readiness banner */}
+      <motion.div variants={fadeInUp}>
+        <Card>
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="relative size-16 shrink-0">
+                  <svg className="size-16 -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="16" fill="none" stroke="#e2e8f0" strokeWidth="3" />
+                    <circle
+                      cx="18" cy="18" r="16" fill="none" stroke={toneColor} strokeWidth="3"
+                      strokeDasharray={`${(readiness.score / 100) * 100} 100`} strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-lg font-bold" style={{ color: toneColor }}>{readiness.score}</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5"><Gauge className="size-4" /> Rental Readiness</p>
+                  <p className="font-semibold" style={{ color: toneColor }}>{readiness.label}</p>
+                </div>
+              </div>
+              <Separator orientation="vertical" className="hidden sm:block h-16" />
+              <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {readiness.factors.map((f) => (
+                  <div key={f.label} className="flex items-center gap-2 rounded-lg border p-2" style={f.met ? { backgroundColor: toneBg } : {}}>
+                    {f.met ? <CheckCircle2 className="size-4 text-emerald-500 shrink-0" /> : <Clock className="size-4 text-amber-500 shrink-0" />}
+                    <span className="text-xs leading-tight">{f.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Search filters */}
+      <motion.div variants={fadeInUp}>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Search className="size-5 text-teal-600" />
+              Find Properties
+            </CardTitle>
+            <CardDescription>Search the catalogue by location, type, size and budget. You can apply directly to eligible properties.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1"><MapPin className="size-3" /> Location</Label>
+                <Input placeholder="City or postcode" value={location} onChange={(e) => setLocation(e.target.value)} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1"><Home className="size-3" /> Property Type</Label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30"
+                >
+                  <option value="all">All types</option>
+                  <option value="residential">Residential</option>
+                  <option value="hmo">HMO</option>
+                  <option value="commercial">Commercial</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1"><BedDouble className="size-3" /> Min Bedrooms</Label>
+                <select
+                  value={minBeds}
+                  onChange={(e) => setMinBeds(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30"
+                >
+                  <option value="any">Any</option>
+                  <option value="1">1+</option>
+                  <option value="2">2+</option>
+                  <option value="3">3+</option>
+                  <option value="4">4+</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1"><PoundSterling className="size-3" /> Max Budget (pcm)</Label>
+                <Input type="number" placeholder="e.g. 2000" value={maxBudget} onChange={(e) => setMaxBudget(e.target.value)} className="h-9" />
+              </div>
+            </div>
+            {(location || type !== 'all' || minBeds !== 'any' || maxBudget) && (
+              <div className="flex items-center gap-2 mt-3">
+                <Badge variant="outline" className="text-xs gap-1"><SlidersHorizontal className="size-3" /> {filtered.length} of {enriched.length} match</Badge>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setLocation(''); setType('all'); setMinBeds('any'); setMaxBudget(''); }}>
+                  Clear filters
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Results */}
+      <motion.div variants={fadeInUp}>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="animate-pulse"><CardContent className="p-4"><div className="h-4 bg-muted rounded w-2/3 mb-3" /><div className="h-8 bg-muted rounded w-1/2" /></CardContent></Card>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Search className="size-12 text-muted-foreground/40 mx-auto mb-3" />
+              <p className="font-medium text-muted-foreground">No properties match your search</p>
+              <p className="text-sm text-muted-foreground mt-1">Try widening your budget or removing filters.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map(({ property, rent, alreadyApplied }) => {
+              const affordable = !maxBudget || rent <= Number(maxBudget);
+              const compliant = property.complianceStatus === 'compliant' || property.complianceStatus === 'clear';
+              return (
+                <Card key={property.id} className="border shadow-none flex flex-col">
+                  <CardContent className="p-4 flex flex-col flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <MapPin className="size-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm leading-tight truncate">{property.address}</p>
+                          <p className="text-xs text-muted-foreground">{property.city}, {property.postcode}</p>
+                        </div>
+                      </div>
+                      <StatusBadge status={property.complianceStatus} domain="compliance" />
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap mt-3">
+                      <PropertyTypeBadge type={property.propertyType} />
+                      {property.bedrooms != null && (
+                        <Badge variant="outline" className="text-xs gap-1"><BedDouble className="size-3" /> {property.bedrooms} bed{property.bedrooms !== 1 ? 's' : ''}</Badge>
+                      )}
+                      <EpcBadge rating={property.epcRating} />
+                      {property.hmoLicensed && <Badge variant="outline" className="text-[10px]">HMO Licensed</Badge>}
+                    </div>
+
+                    <div className="mt-3 p-2.5 rounded-lg bg-slate-50 border flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Indicative rent</p>
+                        <p className="text-lg font-bold text-teal-700">£{rent.toLocaleString()}<span className="text-xs font-normal text-muted-foreground">/mo</span></p>
+                      </div>
+                      <div className="text-right">
+                        <Badge
+                          className="text-[10px] gap-1"
+                          style={affordable ? { color: '#059669', backgroundColor: '#ecfdf5', borderColor: 'transparent' } : { color: '#d97706', backgroundColor: '#fffbeb', borderColor: 'transparent' }}
+                        >
+                          {affordable ? <CheckCircle2 className="size-3" /> : <AlertTriangle className="size-3" />}
+                          {affordable ? 'Within budget' : 'Over budget'}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Suitability hints */}
+                    <div className="mt-3 space-y-1.5 flex-1">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {compliant ? <Check className="size-3.5 text-emerald-500" /> : <Clock className="size-3.5 text-amber-500" />}
+                        Property compliance {compliant ? 'verified' : 'under review'}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Sparkles className="size-3.5 text-teal-500" />
+                        Matched to your Rental Readiness ({readiness.score}/100)
+                      </div>
+                    </div>
+
+                    {/* Apply */}
+                    <div className="mt-4">
+                      {alreadyApplied ? (
+                        <Button variant="outline" disabled className="w-full gap-2">
+                          <CheckCircle2 className="size-4 text-emerald-500" /> Application Submitted
+                        </Button>
+                      ) : (
+                        <Button
+                          className="w-full bg-teal-600 hover:bg-teal-700 text-white gap-2"
+                          disabled={applyingId === property.id}
+                          onClick={() => handleApply(property, rent)}
+                        >
+                          {applyingId === property.id ? (
+                            <><Loader2 className="size-4 animate-spin" /> Submitting…</>
+                          ) : (
+                            <><Send className="size-4" /> Apply for this Property</>
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
     </motion.div>
   );
 }
 
 // ===================== MAIN COMPONENT =====================
 
+// AC1/AC2/AC7 — Prerequisite gate shown to tenants whose identity is not yet verified.
+function TenantVerificationGate({ status, onNavigate }: { status?: string; onNavigate?: (section: string) => void }) {
+  const variants: Record<string, { title: string; message: string; tone: 'pending' | 'fail' }> = {
+    pending: { title: 'Verification In Progress', message: 'Your identity verification is still in progress. Finish onboarding to unlock Right to Rent, Property Intelligence and applications.', tone: 'pending' },
+    in_progress: { title: 'Verification In Progress', message: 'Your identity verification is still in progress. Finish onboarding to unlock Right to Rent, Property Intelligence and applications.', tone: 'pending' },
+    rejected: { title: 'Verification Unsuccessful', message: 'Your identity verification was not successful. Please resolve the flagged issues and re-verify before continuing.', tone: 'fail' },
+    failed: { title: 'Verification Unsuccessful', message: 'Your identity verification was not successful. Please resolve the flagged issues and re-verify before continuing.', tone: 'fail' },
+    expired: { title: 'Verification Expired', message: 'Your identity verification has expired. Please re-verify your identity to continue your rental journey.', tone: 'fail' },
+  };
+  const info = (status && variants[status]) || {
+    title: 'Identity Verification Required',
+    message: "You haven't completed Identity & Trust verification yet. Complete it to unlock Right to Rent, Property Intelligence and property applications.",
+    tone: 'pending' as const,
+  };
+  const isFail = info.tone === 'fail';
+  const accent = isFail ? '#dc2626' : '#0d9488';
+  const bg = isFail ? '#fef2f2' : '#f0fdfa';
+  const Icon = isFail ? XCircle : Lock;
+  const cta = isFail ? 'Re-verify Identity' : status ? 'Continue Verification' : 'Start Identity Verification';
+
+  return (
+    <div className="p-4 md:p-6">
+      <Card className="max-w-2xl mx-auto" style={{ borderColor: accent + '55' }}>
+        <CardContent className="py-10 flex flex-col items-center text-center gap-4">
+          <div className="flex size-16 items-center justify-center rounded-full" style={{ backgroundColor: bg, color: accent }}>
+            <Icon className="size-8" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold" style={{ color: accent }}>{info.title}</h3>
+            <Badge variant="outline" className="mt-2 text-[11px]" style={{ color: accent, backgroundColor: bg, borderColor: accent + '40' }}>
+              <ShieldCheck className="size-3 mr-1" /> Identity &amp; Trust: {status ? status.replace(/_/g, ' ') : 'not started'}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground max-w-md">{info.message}</p>
+
+          <div className="w-full max-w-md rounded-lg border bg-slate-50/70 p-4 text-left">
+            <p className="text-xs font-semibold text-foreground mb-2">Your rental journey unlocks in order:</p>
+            <ol className="space-y-2 text-xs">
+              <li className="flex items-center gap-2 font-medium" style={{ color: accent }}>
+                <ShieldCheck className="size-4 shrink-0" /> 1. Verify your identity <span className="text-amber-600">(you are here)</span>
+              </li>
+              <li className="flex items-center gap-2 text-muted-foreground">
+                <Landmark className="size-4 shrink-0" /> 2. Complete your Right to Rent check
+              </li>
+              <li className="flex items-center gap-2 text-muted-foreground">
+                <Building2 className="size-4 shrink-0" /> 3. Search properties &amp; submit applications
+              </li>
+            </ol>
+          </div>
+
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white gap-1.5" onClick={() => onNavigate?.('identity')}>
+            <UserPlus className="size-4" /> {cta} <ArrowRight className="size-4" />
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenceProps = {}) {
   const { data: session } = useSession();
   const userRole = session?.user?.role;
   const isTenant = userRole === 'tenant';
+  const [tenantTab, setTenantTab] = useState('find');
 
   const { data, isLoading, error } = useApi<PropertiesResponse>(
     'properties',
@@ -1077,6 +1830,18 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
 
   const properties = data?.properties ?? [];
   const summary = data?.summary;
+
+  // AC1/AC2 — tenant must have a successfully verified identity to access Right
+  // to Rent, Property Intelligence search and property applications.
+  const { data: identityData } = useApi<{ identities: { status: string; trustLevel: number }[] }>(
+    'identities',
+    '/api/identities',
+    isTenant,
+    { userId: session?.user?.id || '', role: session?.user?.role || '' }
+  );
+  const myIdentity = identityData?.identities?.[0];
+  const identityStatus = myIdentity?.status;
+  const identityVerified = identityStatus === 'verified';
 
   // Compute metrics
   const totalProperties = data?.total ?? 0;
@@ -1093,6 +1858,11 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
 
   // Guarantor replaced
   const guarantorReplacedApps = allApplications.filter((a) => a.guarantorReplaced);
+
+  // Tenant's own trust level (derived from their profile in applications)
+  const myTrustLevel = allApplications.find(
+    (a) => a.profile.email === session?.user?.email
+  )?.profile.trustLevel ?? 0;
 
   // Market intelligence mock data
   const avgTrustByArea = [
@@ -1114,7 +1884,7 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="animate-pulse">
@@ -1145,24 +1915,55 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
 
   // ===================== TENANT VIEW =====================
   if (isTenant) {
+    // AC1/AC2/AC7 — block Right to Rent + Property Intelligence until identity is verified
+    if (!identityVerified) {
+      return <TenantVerificationGate status={identityStatus} onNavigate={onNavigate} />;
+    }
+
+    const myApps = allApplications.filter((a) => a.profile.email === session?.user?.email);
+    const myRtr = myApps.length > 0 ? myApps[0].rightToRent : 'not_started';
+    const readiness = rentalReadiness({
+      identityVerified,
+      trustLevel: myIdentity?.trustLevel ?? myTrustLevel,
+      rtrStatus: myRtr,
+      complianceClear: myApps.length > 0 ? myApps[0].complianceClear : identityVerified,
+      riskClear: myApps.length > 0 ? myApps[0].riskClear : identityVerified,
+    });
+
     return (
       <motion.div
-        className="space-y-6 p-4 md:p-6"
+        className="space-y-6"
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
       >
-        <Tabs defaultValue="my-application" className="w-full">
+        <Tabs value={tenantTab} onValueChange={setTenantTab} className="w-full">
           <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="my-application" className="gap-2">
-              <Building2 className="size-4" />
-              My Application
+            <TabsTrigger value="find" className="gap-2">
+              <Search className="size-4" />
+              Find Properties
             </TabsTrigger>
             <TabsTrigger value="right-to-rent" className="gap-2">
               <ShieldCheck className="size-4" />
               Right to Rent
             </TabsTrigger>
+            <TabsTrigger value="my-application" className="gap-2">
+              <Building2 className="size-4" />
+              My Application{myApps.length !== 1 ? 's' : ''}
+            </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="find" className="mt-6">
+            <FindPropertiesView readiness={readiness} onApplied={() => setTenantTab('my-application')} />
+          </TabsContent>
+
+          <TabsContent value="right-to-rent" className="mt-6">
+            <TenantRightToRentSummary
+              allApplications={allApplications}
+              sessionEmail={session?.user?.email || ''}
+              trustLevel={myIdentity?.trustLevel ?? myTrustLevel}
+            />
+          </TabsContent>
 
           <TabsContent value="my-application" className="mt-6">
             <TenantPropertyView
@@ -1170,13 +1971,7 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
               allApplications={allApplications}
               sessionEmail={session?.user?.email || ''}
               onNavigate={onNavigate}
-            />
-          </TabsContent>
-
-          <TabsContent value="right-to-rent" className="mt-6">
-            <TenantRightToRentSummary
-              allApplications={allApplications}
-              sessionEmail={session?.user?.email || ''}
+              onFindProperties={() => setTenantTab('find')}
             />
           </TabsContent>
         </Tabs>
@@ -1301,7 +2096,7 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
                             </p>
                           </div>
                         </div>
-                        <StatusBadge status={property.complianceStatus} />
+                        <StatusBadge status={property.complianceStatus} domain="compliance" />
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <PropertyTypeBadge type={property.propertyType} />
@@ -1383,7 +2178,7 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={app.status} />
+                        <StatusBadge status={app.status} domain="application" />
                       </TableCell>
                       <TableCell className="text-center">
                         <YesNoIcon value={app.complianceClear} />
@@ -1392,7 +2187,7 @@ export default function PropertyIntelligence({ onNavigate }: PropertyIntelligenc
                         <YesNoIcon value={app.riskClear} />
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={app.rightToRent} />
+                        <StatusBadge status={app.rightToRent} domain="rtr" />
                       </TableCell>
                       <TableCell className="text-center">
                         {app.guarantorReplaced ? (

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getDataScope } from "@/lib/rbac";
+import { requireSession } from "@/lib/session";
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const role = searchParams.get("role") as string | null;
+  const auth = await requireSession();
+  if (auth.error) return auth.error;
 
-    const scope = getDataScope((role as Parameters<typeof getDataScope>[0]) ?? "tenant");
+  try {
+    const userId = auth.user.id;
+    const scope = getDataScope(auth.user.role as Parameters<typeof getDataScope>[0]);
 
     // Tenant users with no userId: return empty dashboard (data isolation)
     if (scope === "own" && !userId) {

@@ -1,13 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   Users,
-  ShieldCheck,
-  TrendingUp,
   FileCheck,
   AlertTriangle,
   Landmark,
@@ -25,10 +23,12 @@ import {
   User,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Download,
   Share2,
   HelpCircle,
+  Scale,
+  Briefcase,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -52,9 +52,19 @@ import PartnerEcosystem from '@/components/platform/PartnerEcosystem';
 import AIAssistant from '@/components/platform/AIAssistant';
 import Settings from '@/components/platform/Settings';
 import LandingPage from '@/components/platform/LandingPage';
-import { canAccessSection, getRoleDefinition, type UserRole } from '@/lib/rbac';
+import MLROWorkspace from '@/components/platform/MLROWorkspace';
+import AMLWorkflowPage from '@/components/platform/AMLWorkflowPage';
+import Reports from '@/components/platform/Reports';
+import { canAccessSection, getRoleDefinition, type UserRole, type SectionId as RbacSectionId } from '@/lib/rbac';
+import { generatePersonaReport } from '@/lib/persona-report';
+import { openReportPreview } from '@/lib/report-export';
+import ShareCredentialDialog from '@/components/platform/ShareCredentialDialog';
 
-type SectionId = 'dashboard' | 'identity' | 'compliance' | 'risk' | 'property' | 'partners' | 'ai-assistant' | 'settings';
+type SectionId = RbacSectionId;
+
+function canAccess(role: UserRole, section: SectionId): boolean {
+  return canAccessSection(role, section);
+}
 
 interface NavItem {
   id: string;
@@ -63,18 +73,17 @@ interface NavItem {
   sectionId: SectionId;
 }
 
-// 12 nav items mapping to the 8 underlying sections.
-// Multiple nav items can map to the same section (e.g. Applicants, Verifications, Trust Ladder -> identity)
 const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="size-5" />, sectionId: 'dashboard' },
   { id: 'applicants', label: 'Applicants', icon: <Users className="size-5" />, sectionId: 'identity' },
-  { id: 'verifications', label: 'Verifications', icon: <ShieldCheck className="size-5" />, sectionId: 'identity' },
-  { id: 'trust-ladder', label: 'Trust Ladder', icon: <TrendingUp className="size-5" />, sectionId: 'identity' },
   { id: 'compliance', label: 'Compliance', icon: <FileCheck className="size-5" />, sectionId: 'compliance' },
+  { id: 'aml-workflow', label: 'AML Workflow', icon: <Shield className="size-5" />, sectionId: 'aml' },
+  { id: 'cases', label: 'Case Management', icon: <Briefcase className="size-5" />, sectionId: 'cases' },
+  { id: 'mlro-workspace', label: 'MLRO Workspace', icon: <Scale className="size-5" />, sectionId: 'mlro-workspace' },
   { id: 'risk-intelligence', label: 'Risk Intelligence', icon: <AlertTriangle className="size-5" />, sectionId: 'risk' },
   { id: 'right-to-rent', label: 'Right to Rent', icon: <Landmark className="size-5" />, sectionId: 'property' },
   { id: 'property-intelligence', label: 'Property Intelligence', icon: <Building2 className="size-5" />, sectionId: 'property' },
-  { id: 'reports', label: 'Reports', icon: <FileBarChart className="size-5" />, sectionId: 'compliance' },
+  { id: 'reports', label: 'Reports', icon: <FileBarChart className="size-5" />, sectionId: 'reports' },
   { id: 'partners', label: 'Partners', icon: <Handshake className="size-5" />, sectionId: 'partners' },
   { id: 'ai-assistant', label: 'AI Assistant', icon: <Bot className="size-5" />, sectionId: 'ai-assistant' },
   { id: 'settings', label: 'Settings', icon: <Settings2 className="size-5" />, sectionId: 'settings' },
@@ -84,11 +93,16 @@ const SECTION_META: Record<SectionId, { title: string; subtitle: string }> = {
   dashboard: { title: 'Platform Dashboard', subtitle: 'Real-time overview of identity verification, compliance, and risk metrics' },
   identity: { title: 'Identity & Trust', subtitle: 'Trust Ladder verification framework with progressive identity assurance' },
   compliance: { title: 'Compliance Automation', subtitle: 'AML/KYC/CDD/EDD workflows, screening, and regulatory compliance monitoring' },
+  aml: { title: 'AML Workflow', subtitle: 'CDD → EDD → SAR → MLRO sign-off — your stage is determined by your role' },
+  reports: { title: 'Reports', subtitle: 'Filtered compliance, partner and referral reports — export to CSV or PDF' },
+  cases: { title: 'Case Management', subtitle: 'FR-CASE001 — Manage compliance cases from CDD through to MLRO sign-off' },
+  'mlro-workspace': { title: 'MLRO Workspace', subtitle: 'MLR 2017 Reg.21 — SAR adjudication, EDD sign-off, and audit trail verification' },
   risk: { title: 'Risk Intelligence', subtitle: 'Risk scoring, fraud detection, trust assessment, and explainability analytics' },
-  property: { title: 'Property Intelligence', subtitle: 'Property compliance, Right to Rent, guarantor replacement & market intelligence' },
+  property: { title: 'Property Intelligence', subtitle: 'Property compliance, Right to Rent, EPC/HMO risk scoring & market intelligence' },
   partners: { title: 'Partner Ecosystem', subtitle: 'Partner integrations, referral pipeline & banking referral services' },
-  'ai-assistant': { title: 'AI Compliance Assistant', subtitle: 'Regulatory guidance chatbot powered by compliance knowledge base' },
+  'ai-assistant': { title: 'AI Compliance Assistant', subtitle: 'Regulatory guidance powered by Claude AI — UK MLR 2017, AML, KYC, EDD, Right to Rent' },
   settings: { title: 'Settings', subtitle: 'Manage your profile, security, notifications, privacy, and platform configuration' },
+  audit: { title: 'Audit Trail', subtitle: 'Tamper-evident hash-chained audit log for regulatory inspection' },
 };
 
 export default function Home() {
@@ -99,6 +113,21 @@ export default function Home() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [settingsTab, setSettingsTab] = useState('profile');
   const [searchQuery, setSearchQuery] = useState('');
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const fetchCount = () =>
+      fetch('/api/notifications?unread=true')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.unreadCount !== undefined) setUnreadCount(d.unreadCount); })
+        .catch(() => {});
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    return () => clearInterval(interval);
+  }, [session?.user?.id]);
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -116,10 +145,10 @@ export default function Home() {
   const roleDef = getRoleDefinition(userRole);
 
   // Filter nav items based on whether their target section is accessible for the role
-  const navItems = NAV_ITEMS.filter((item) => canAccessSection(userRole, item.sectionId));
+  const navItems = NAV_ITEMS.filter((item) => canAccess(userRole, item.sectionId));
 
   // Derive valid active section — fallback to first accessible section if current is not accessible
-  const validSection: SectionId = canAccessSection(userRole, activeSection)
+  const validSection: SectionId = canAccess(userRole, activeSection)
     ? activeSection
     : (navItems[0]?.sectionId ?? 'dashboard');
 
@@ -158,7 +187,7 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-teal-50/30">
         <div className="flex flex-col items-center gap-4">
-          <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-12 w-auto animate-pulse" />
+          <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-12 w-auto max-w-[260px] object-contain animate-pulse" />
           <div className="flex items-center gap-2 text-muted-foreground">
             <div className="size-4 border-2 border-[#10B981]/30 border-t-[#10B981] rounded-full animate-spin" />
             <span className="text-sm">Loading platform...</span>
@@ -182,6 +211,21 @@ export default function Home() {
     if (ai) handleNavClick(ai);
   };
 
+  // Generate a persona-specific report and open it in a preview window
+  // (the user can Print / Save as PDF from there). Available to every persona.
+  const handleDownloadReport = async () => {
+    if (isGeneratingReport) return;
+    setIsGeneratingReport(true);
+    try {
+      const html = await generatePersonaReport(userRole, { name: session.user.name, email: session.user.email });
+      openReportPreview(html);
+    } catch {
+      // Non-fatal — preview simply won't open
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F9FAFB]">
       {/* Header (white background) */}
@@ -199,10 +243,11 @@ export default function Home() {
               {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
             </Button>
 
-            {/* Mobile logo (sidebar hidden on mobile) */}
-            <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-8 w-auto lg:hidden" />
+            {/* Logo in top header banner (white bg — full wordmark) */}
+            <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-8 w-auto object-contain shrink-0" />
 
-            {/* Desktop breadcrumb */}
+            {/* Divider + Desktop breadcrumb */}
+            <div className="hidden lg:block h-6 w-px bg-slate-200 shrink-0" />
             <nav className="hidden lg:flex items-center gap-2 text-sm" aria-label="Breadcrumb">
               <button
                 onClick={goToDashboard}
@@ -269,9 +314,11 @@ export default function Home() {
               onClick={() => handleSectionChange('settings')}
             >
               <Bell className="size-5" />
-              <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                3
-              </span>
+              {unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </Button>
 
             {/* User Menu */}
@@ -329,20 +376,28 @@ export default function Home() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Download Report button */}
+            {/* Download Report button — persona-specific report preview */}
             <Button
               variant="outline"
               size="sm"
               className="hidden lg:flex border-slate-300 text-[#0F172A] hover:bg-slate-50 hover:border-slate-400"
+              onClick={handleDownloadReport}
+              disabled={isGeneratingReport}
+              title="Generate a report for your role and preview it (Save as PDF)"
             >
-              <Download className="size-4 mr-1.5" />
-              Download Report
+              {isGeneratingReport ? (
+                <div className="size-4 mr-1.5 border-2 border-slate-300 border-t-[#0F172A] rounded-full animate-spin" />
+              ) : (
+                <Download className="size-4 mr-1.5" />
+              )}
+              {isGeneratingReport ? 'Generating…' : 'Download Report'}
             </Button>
 
             {/* Share Credential button */}
             <Button
               size="sm"
               className="hidden lg:flex bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
+              onClick={() => setShareOpen(true)}
             >
               <Share2 className="size-4 mr-1.5" />
               Share Credential
@@ -351,21 +406,13 @@ export default function Home() {
         </div>
       </header>
 
+      <ShareCredentialDialog open={shareOpen} onOpenChange={setShareOpen} />
+
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar (deep navy #0F172A) */}
         <aside className="hidden lg:flex flex-col w-64 bg-[#0F172A] shrink-0">
-          {/* Logo at top (inverted to white) */}
-          <div className="px-4 py-4 border-b border-white/10">
-            <img
-              src="/logo.png"
-              alt="PropComply AI + VerifyMe Global"
-              className="h-8 w-auto"
-              style={{ filter: 'brightness(0) invert(1)' }}
-            />
-          </div>
-
-          {/* Navigation items */}
-          <ScrollArea className="flex-1 py-3">
+          {/* Navigation items (logo now lives in the top header banner) */}
+          <ScrollArea className="flex-1 py-4">
             <nav className="space-y-1 px-3" aria-label="Main navigation">
               {navItems.map((item) => {
                 const isActive = validNavId === item.id;
@@ -442,17 +489,8 @@ export default function Home() {
                 transition={{ type: 'spring', damping: 25, stiffness: 250 }}
                 className="fixed left-0 top-16 bottom-0 z-50 w-[280px] bg-[#0F172A] shadow-xl lg:hidden flex flex-col"
               >
-                {/* Logo at top of mobile sidebar (inverted) */}
-                <div className="px-4 py-3 border-b border-white/10">
-                  <img
-                    src="/logo.png"
-                    alt="PropComply AI + VerifyMe Global"
-                    className="h-8 w-auto"
-                    style={{ filter: 'brightness(0) invert(1)' }}
-                  />
-                </div>
-
-                <ScrollArea className="flex-1 py-3">
+                {/* Logo lives in the top header banner */}
+                <ScrollArea className="flex-1 py-4">
                   <nav className="space-y-1 px-3" aria-label="Mobile navigation">
                     {navItems.map((item) => {
                       const isActive = validNavId === item.id;
@@ -562,13 +600,18 @@ export default function Home() {
                 </motion.div>
               )}
               {validSection === 'identity' && (
-                <motion.div key="identity" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-                  <IdentityTrust searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} />
+                <motion.div key={`identity-${validNavId}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <IdentityTrust searchQuery={searchQuery} onClearSearch={() => setSearchQuery('')} focus={validNavId} />
                 </motion.div>
               )}
               {validSection === 'compliance' && (
                 <motion.div key="compliance" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
                   <ComplianceAutomation />
+                </motion.div>
+              )}
+              {validSection === 'aml' && (
+                <motion.div key="aml" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <AMLWorkflowPage />
                 </motion.div>
               )}
               {validSection === 'risk' && (
@@ -578,7 +621,22 @@ export default function Home() {
               )}
               {validSection === 'property' && (
                 <motion.div key="property" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
-                  <PropertyIntelligence onNavigate={handleSectionChange} />
+                  <PropertyIntelligence onNavigate={(s: string) => handleSectionChange(s as SectionId)} />
+                </motion.div>
+              )}
+              {validSection === 'cases' && (
+                <motion.div key="cases" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <ComplianceAutomation />
+                </motion.div>
+              )}
+              {validSection === 'mlro-workspace' && (
+                <motion.div key="mlro-workspace" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <MLROWorkspace />
+                </motion.div>
+              )}
+              {validSection === 'reports' && (
+                <motion.div key="reports" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
+                  <Reports />
                 </motion.div>
               )}
               {validSection === 'partners' && (
@@ -611,7 +669,7 @@ export default function Home() {
               <img
                 src="/logo.png"
                 alt="PropComply AI + VerifyMe Global"
-                className="h-8 w-auto mb-3"
+                className="h-8 w-auto max-w-[220px] object-contain mb-3"
                 style={{ filter: 'brightness(0) invert(1)' }}
               />
               <p className="text-white/50 text-xs leading-relaxed">

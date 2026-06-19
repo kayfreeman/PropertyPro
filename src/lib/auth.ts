@@ -1,8 +1,7 @@
-// PropComply AI + VerifyMe Global — NextAuth Configuration
-// Trust Infrastructure Platform
-
+// PropComply AI — NextAuth Configuration
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
 
 export const authOptions: NextAuthOptions = {
@@ -14,21 +13,20 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
+        if (!credentials?.email || !credentials?.password) return null;
 
         try {
           const user = await db.user.findUnique({
             where: { email: credentials.email },
+            include: { firm: { select: { id: true, name: true } } },
           });
 
-          if (!user) return null;
-          if (!user.isActive) return null;
+          if (!user || !user.isActive) return null;
           if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) return null;
 
-          // Simple password comparison (in production, use bcrypt/argon2)
-          if (user.passwordHash !== credentials.password) {
+          const passwordValid = await bcrypt.compare(credentials.password, user.passwordHash);
+
+          if (!passwordValid) {
             const attempts = user.loginAttempts + 1;
             const lockUntil = attempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
             await db.user.update({
@@ -38,14 +36,9 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
-          // Reset login attempts and update last login
           await db.user.update({
             where: { id: user.id },
-            data: {
-              loginAttempts: 0,
-              lockedUntil: null,
-              lastLoginAt: new Date(),
-            },
+            data: { loginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
           });
 
           return {
@@ -53,6 +46,8 @@ export const authOptions: NextAuthOptions = {
             email: user.email,
             name: user.name,
             role: user.role,
+            firmId: user.firmId,
+            firmName: user.firm?.name ?? null,
             avatar: user.avatar || user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
             department: user.department,
             jobTitle: user.jobTitle,
@@ -68,12 +63,15 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
-        token.role = (user as Record<string, unknown>).role;
-        token.avatar = (user as Record<string, unknown>).avatar;
-        token.department = (user as Record<string, unknown>).department;
-        token.jobTitle = (user as Record<string, unknown>).jobTitle;
-        token.mfaEnabled = (user as Record<string, unknown>).mfaEnabled;
+        const u = user as unknown as Record<string, unknown>;
+        token.id = u.id as string;
+        token.role = u.role as string;
+        token.firmId = (u.firmId as string | null) ?? null;
+        token.firmName = (u.firmName as string | null) ?? null;
+        token.avatar = u.avatar as string;
+        token.department = u.department as string | undefined;
+        token.jobTitle = u.jobTitle as string | undefined;
+        token.mfaEnabled = u.mfaEnabled as boolean;
       }
       return token;
     },
@@ -81,6 +79,8 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as Record<string, unknown>).id = token.id;
         (session.user as Record<string, unknown>).role = token.role;
+        (session.user as Record<string, unknown>).firmId = token.firmId;
+        (session.user as Record<string, unknown>).firmName = token.firmName;
         (session.user as Record<string, unknown>).avatar = token.avatar;
         (session.user as Record<string, unknown>).department = token.department;
         (session.user as Record<string, unknown>).jobTitle = token.jobTitle;
@@ -89,19 +89,12 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  pages: {
-    signIn: '/',
-    error: '/',
-  },
-  session: {
-    strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 hours
-  },
-  secret: process.env.NEXTAUTH_SECRET || 'propcomply-ai-verifyme-global-dev-secret-2024',
+  pages: { signIn: '/', error: '/' },
+  session: { strategy: 'jwt', maxAge: 8 * 60 * 60 },
+  secret: process.env.NEXTAUTH_SECRET,
   debug: false,
 };
 
-// Type augmentation for next-auth
 declare module 'next-auth' {
   interface Session {
     user: {
@@ -109,6 +102,8 @@ declare module 'next-auth' {
       email: string;
       name: string;
       role: string;
+      firmId: string | null;
+      firmName: string | null;
       avatar: string;
       department?: string;
       jobTitle?: string;
@@ -121,6 +116,8 @@ declare module 'next-auth/jwt' {
   interface JWT {
     id: string;
     role: string;
+    firmId: string | null;
+    firmName: string | null;
     avatar: string;
     department?: string;
     jobTitle?: string;

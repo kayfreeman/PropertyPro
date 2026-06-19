@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getDataScope } from "@/lib/rbac";
+import { requireSession } from "@/lib/session";
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const role = searchParams.get("role") as string | null;
+  const auth = await requireSession();
+  if (auth.error) return auth.error;
 
-    const scope = getDataScope((role as Parameters<typeof getDataScope>[0]) ?? "tenant");
+  try {
+    const userId = auth.user.id;
+    const scope = getDataScope(auth.user.role as Parameters<typeof getDataScope>[0]);
+
+    // AC2 — discovery mode: a verified tenant browses the full property catalogue
+    // to search and apply. Their own applications are still the only ones attached
+    // to each property (no PII leakage of other applicants).
+    const { searchParams } = new URL(request.url);
+    const discover = searchParams.get("discover") === "true";
 
     // Tenant users with no userId: return empty data (data isolation)
     if (scope === "own" && !userId) {
@@ -17,15 +24,25 @@ export async function GET(request: NextRequest) {
 
     // For tenant users: find their profile first, then filter property applications
     let profileId: string | null = null;
+    let identityVerified = false;
     if (scope === "own" && userId) {
       const profile = await db.identityProfile.findFirst({
         where: { userId },
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (!profile) {
         return NextResponse.json({ properties: [], total: 0, summary: { byComplianceStatus: {}, byPropertyType: {}, applicationsByStatus: {} } });
       }
       profileId = profile.id;
+      identityVerified = profile.status === "verified";
+
+      // Discovery requires a verified identity (AC1/AC2 gate, mirrors the UI).
+      if (discover && !identityVerified) {
+        return NextResponse.json(
+          { properties: [], total: 0, summary: { byComplianceStatus: {}, byPropertyType: {}, applicationsByStatus: {} }, code: "IDENTITY_NOT_VERIFIED" },
+          { status: 200 }
+        );
+      }
     }
 
     const properties = await db.property.findMany({
@@ -51,8 +68,9 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // For tenant: only include properties where they have applications
-    const filteredProperties = scope === "own"
+    // For tenant: "My Applications" view only shows properties they have applied
+    // to. Discovery mode (AC2) shows the full catalogue so they can search & apply.
+    const filteredProperties = scope === "own" && !discover
       ? properties.filter((p) => p.applications.length > 0)
       : properties;
 

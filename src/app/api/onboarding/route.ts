@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { z } from 'zod';
+
+const CreateOnboardingSchema = z.object({
+  applicantEmail: z.string().email("Valid email required"),
+  applicantName: z.string().min(1, "Applicant name is required").max(200),
+  nationality: z.string().length(2).optional(),
+  registrationMethod: z.enum(["email", "google", "microsoft"]).optional(),
+  mfaEnforced: z.boolean().optional(),
+  profileId: z.string().optional(),
+});
 
 // GET /api/onboarding — List onboarding processes with filtering
 export async function GET(request: NextRequest) {
@@ -57,14 +67,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { applicantEmail, applicantName, nationality, registrationMethod, mfaEnforced, profileId } = body;
-
-    if (!applicantEmail || !applicantName) {
+    const parsed = CreateOnboardingSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'applicantEmail and applicantName are required' },
+        { error: 'Validation failed', issues: parsed.error.flatten().fieldErrors },
         { status: 400 }
       );
     }
+    const { applicantEmail, applicantName, nationality, registrationMethod, mfaEnforced, profileId } = parsed.data;
 
     // Check for existing process with same email
     const existing = await db.onboardingProcess.findFirst({
@@ -126,7 +136,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Build update data object with only allowed fields
-    const allowedFields: (keyof typeof updateFields)[] = [
+    const allowedFields: string[] = [
       'profileId',
       'nationality',
       'registrationMethod',

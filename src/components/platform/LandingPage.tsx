@@ -74,7 +74,7 @@ const LIGHT_BG = '#F9FAFB'; // section background
 const DARK_GRAY = '#374151'; // body text
 
 // ─── Demo Accounts ──────────────────────────────────────────────────
-const DEMO_ACCOUNTS: { role: UserRole; email: string; password: string }[] = [
+const DEMO_ACCOUNTS: { role: UserRole; email: string; password: string; note?: string }[] = [
   { role: 'platform_admin', email: 'admin@propcomply.ai', password: 'Admin@2024' },
   { role: 'compliance_officer', email: 'compliance@propcomply.ai', password: 'Compliance@2024' },
   { role: 'property_manager', email: 'property@propcomply.ai', password: 'Property@2024' },
@@ -82,7 +82,10 @@ const DEMO_ACCOUNTS: { role: UserRole; email: string; password: string }[] = [
   { role: 'risk_analyst', email: 'risk@propcomply.ai', password: 'Risk@2024' },
   { role: 'partner_integration_manager', email: 'partner-mgr@propcomply.ai', password: 'PartnerMgr@2024' },
   { role: 'partner_user', email: 'partner@barclays.ai', password: 'Partner@2024' },
-  { role: 'tenant', email: 'tenant@example.com', password: 'Tenant@2024' },
+  // Tenant / Applicant personas — covering each stage of the self-service journey
+  { role: 'tenant', email: 'tenant@example.com', password: 'Tenant@2024', note: 'Verified profile' },
+  { role: 'tenant', email: 'applicant@example.com', password: 'Tenant@2024', note: 'Onboarding in progress' },
+  { role: 'tenant', email: 'newtenant@example.com', password: 'Tenant@2024', note: 'First-time — start onboarding' },
 ];
 
 const ROLE_ICONS: Record<string, React.ReactNode> = {
@@ -176,6 +179,7 @@ function LoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
+          <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-9 w-auto max-w-[220px] object-contain self-center sm:self-start mb-2" />
           <div className="flex items-center gap-2">
             <Lock className="size-5" style={{ color: TEAL }} />
             <DialogTitle className="text-xl" style={{ color: NAVY }}>
@@ -291,7 +295,7 @@ function LoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open
               const roleDef = ROLE_DEFINITIONS[account.role];
               return (
                 <button
-                  key={account.role}
+                  key={account.email}
                   onClick={() => handleQuickLogin(account)}
                   disabled={isLoading}
                   className="w-full flex items-center gap-3 p-2.5 rounded-lg border bg-white hover:bg-slate-50 hover:border-teal-300 transition-all duration-200 group text-left"
@@ -305,8 +309,14 @@ function LoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-semibold truncate" style={{ color: NAVY }}>
                       {roleDef.name}
+                      {account.note && (
+                        <span className="ml-1.5 font-normal text-[10px] text-teal-600">· {account.note}</span>
+                      )}
                     </div>
-                    <div className="text-[10px] text-muted-foreground truncate">{account.email}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {account.email} <span className="text-slate-300">·</span>{' '}
+                      <span className="font-mono text-slate-500">{account.password}</span>
+                    </div>
                   </div>
                   <Badge
                     variant="outline"
@@ -816,14 +826,8 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
           {/* Logo */}
-          <button onClick={() => scrollToSection('hero')} className="flex items-center gap-2.5 shrink-0">
-            <img src="/logo.png" alt="PropComply AI Logo" className="size-9 rounded-lg object-contain" />
-            <div className="text-left leading-tight">
-              <div className="text-base font-bold tracking-tight" style={{ color: TEAL }}>
-                PropComply AI
-              </div>
-              <div className="text-[10px] font-medium text-slate-500 -mt-0.5">+ VerifyMe Global</div>
-            </div>
+          <button onClick={() => scrollToSection('hero')} className="flex items-center shrink-0">
+            <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-9 w-auto object-contain shrink-0" />
           </button>
 
           {/* Desktop Menu */}
@@ -1389,7 +1393,10 @@ export default function LandingPage() {
           <Separator className="my-10 bg-white/10" />
 
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-white/50 text-xs sm:text-sm">
-            <span>&copy; 2025 PropComply AI + VerifyMe Global. All rights reserved.</span>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 text-center sm:text-left">
+              <img src="/logo.png" alt="PropComply AI + VerifyMe Global" className="h-7 w-auto object-contain brightness-0 invert mx-auto sm:mx-0" />
+              <span>&copy; 2025 PropComply AI + VerifyMe Global. All rights reserved.</span>
+            </div>
             <div className="flex items-center gap-4">
               <button className="hover:text-white/80 transition-colors">Privacy Policy</button>
               <button className="hover:text-white/80 transition-colors">Terms of Service</button>

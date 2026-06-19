@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UserPlus,
@@ -55,11 +56,48 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CountrySelect, { CountryNameSelect } from '@/components/ui/country-select';
 import { getNationalityByCode } from '@/lib/countries';
+
+// UK sanctions & high-risk country codes (HM Treasury consolidated list + FATF high-risk)
+const SANCTIONED_COUNTRY_CODES = new Set([
+  'KP', // North Korea
+  'IR', // Iran
+  'SY', // Syria
+  'RU', // Russia
+  'BY', // Belarus
+  'MM', // Myanmar/Burma
+  'CU', // Cuba
+  'VE', // Venezuela
+]);
+
+const HIGH_RISK_COUNTRY_CODES = new Set([
+  'AF', // Afghanistan
+  'BI', // Burundi
+  'CF', // Central African Republic
+  'CD', // DRC Congo
+  'IQ', // Iraq
+  'LB', // Lebanon
+  'LY', // Libya
+  'ML', // Mali
+  'SO', // Somalia
+  'SS', // South Sudan
+  'SD', // Sudan
+  'YE', // Yemen
+  'ZW', // Zimbabwe
+  'HT', // Haiti
+  'MZ', // Mozambique
+  'NI', // Nicaragua
+  'NP', // Nepal — Enhanced Due Diligence jurisdiction
+  'BD', // Bangladesh — Enhanced Due Diligence jurisdiction
+]);
+
+// Confidence Gateway threshold — scores at/above this auto-certify (for non-high-risk applicants)
+const CONFIDENCE_THRESHOLD = 80;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -71,7 +109,13 @@ interface WizardState {
   nationality: string;
   registrationMethod: 'email' | 'google' | 'microsoft';
   mfaEnabled: boolean;
+  consentGiven: boolean;
   accountCreated: boolean;
+  // Tracking
+  processId: string;
+  sanctionRejected: boolean;
+  sanctionReason: string;
+  confidenceRejected: boolean;
   // Step 2
   passportUploaded: boolean;
   visaUploaded: boolean;
@@ -106,7 +150,7 @@ interface WizardState {
   fusionComplete: boolean;
   // Step 7
   gatewayPassed: boolean;
-  gatewayResult: 'pending' | 'auto_certified' | 'manual_review';
+  gatewayResult: 'pending' | 'auto_certified' | 'manual_review' | 'rejected';
   // Step 8
   identityRisk: number;
   amlRisk: number;
@@ -120,6 +164,8 @@ interface WizardState {
   // Step 10
   agentReviewStatus: 'pending' | 'in_review' | 'approved' | 'rejected' | 'more_evidence';
   reviewedBy: string;
+  agentReviewed: boolean;
+  agentDecision: string;
 }
 
 // ─── Step Definitions ────────────────────────────────────────────────────────
@@ -263,9 +309,13 @@ interface VerifyMeOnboardingProps {
   onComplete?: () => void;
 }
 
+const ONBOARDING_STORAGE_KEY = 'verifyMe_onboarding_progress';
+
 export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingProps) {
+  const { data: session } = useSession();
   const [currentStep, setCurrentStep] = useState(1);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [resumeBanner, setResumeBanner] = useState<{ step: number; processId: string } | null>(null);
 
   const [state, setState] = useState<WizardState>({
     email: '',
@@ -274,7 +324,12 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
     nationality: '',
     registrationMethod: 'email',
     mfaEnabled: false,
+    consentGiven: false,
     accountCreated: false,
+    processId: '',
+    sanctionRejected: false,
+    sanctionReason: '',
+    confidenceRejected: false,
     passportUploaded: false,
     visaUploaded: false,
     financialFilesUploaded: false,
@@ -314,11 +369,32 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
     credentialExpiry: '',
     agentReviewStatus: 'pending',
     reviewedBy: '',
+    agentReviewed: false,
+    agentDecision: '',
   });
 
   const updateState = useCallback(<K extends keyof WizardState>(key: K, value: WizardState[K]) => {
     setState(prev => ({ ...prev, [key]: value }));
   }, []);
+
+  // First-time tenants: pre-fill the form with their signed-in account identity
+  // so the resulting profile links back to their user record.
+  useEffect(() => {
+    const u = session?.user as { id?: string; name?: string; email?: string; role?: string } | undefined;
+    if (u?.role !== 'tenant') return;
+    const [first, ...rest] = (u.name || '').trim().split(/\s+/);
+    setState(prev =>
+      prev.accountCreated
+        ? prev
+        : {
+            ...prev,
+            email: prev.email || u.email || '',
+            firstName: prev.firstName || first || '',
+            lastName: prev.lastName || rest.join(' ') || '',
+          },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user]);
 
   // ─── Step simulation functions ───────────────────────────────────────────
 
@@ -364,38 +440,63 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
   }, [updateState]);
 
   const simulateFusion = useCallback(() => {
-    if (state.biometricComplete) {
-      updateState('biometricDomainScore', state.biometricConfidence);
-    } else {
-      updateState('biometricDomainScore', 72);
-    }
+    // Reveal the three domain scores in sequence, reading the freshest state each
+    // time via functional updates (avoids stale-closure values that produced an
+    // inconsistent overall score).
+    setState(prev => ({
+      ...prev,
+      biometricDomainScore: prev.biometricComplete ? prev.biometricConfidence : 72,
+    }));
     setTimeout(() => {
-      if (state.financialComplete) {
-        updateState('behaviouralDomainScore', Math.round((state.incomeStability + state.spendingCoherence + state.professionMatch) / 3));
-      } else {
-        updateState('behaviouralDomainScore', 68);
-      }
+      setState(prev => ({
+        ...prev,
+        behaviouralDomainScore: prev.financialComplete
+          ? Math.round((prev.incomeStability + prev.spendingCoherence + prev.professionMatch) / 3)
+          : 68,
+      }));
     }, 800);
     setTimeout(() => {
-      const jurScore = state.sourceCountryDbResult === 'verified' ? 85 : state.sourceCountryDbResult === 'not_available' ? 55 : 40;
-      updateState('jurisdictionalDomainScore', jurScore);
+      setState(prev => ({
+        ...prev,
+        jurisdictionalDomainScore:
+          prev.sourceCountryDbResult === 'verified' ? 85 : prev.sourceCountryDbResult === 'not_available' ? 55 : 40,
+      }));
     }, 1600);
     setTimeout(() => {
-      const overall = Math.round(
-        state.biometricDomainScore * 0.35 +
-        state.behaviouralDomainScore * 0.35 +
-        (state.sourceCountryDbResult === 'verified' ? 85 : 55) * 0.30
-      );
-      updateState('overallConfidenceScore', overall);
-      updateState('fusionComplete', true);
+      setState(prev => {
+        const overall = Math.round(
+          prev.biometricDomainScore * 0.35 +
+          prev.behaviouralDomainScore * 0.35 +
+          prev.jurisdictionalDomainScore * 0.30
+        );
+        return { ...prev, overallConfidenceScore: overall, fusionComplete: true };
+      });
     }, 2400);
-  }, [state.biometricComplete, state.biometricConfidence, state.financialComplete, state.incomeStability, state.spendingCoherence, state.professionMatch, state.sourceCountryDbResult, state.biometricDomainScore, state.behaviouralDomainScore, updateState]);
+  }, []);
 
   const simulateGateway = useCallback(() => {
-    const passed = state.overallConfidenceScore >= 80;
-    updateState('gatewayPassed', passed);
-    updateState('gatewayResult', passed ? 'auto_certified' : 'manual_review');
-  }, [state.overallConfidenceScore, updateState]);
+    // Decide using the freshest state (functional update) so the score is never stale.
+    setState(prev => {
+      const sanctioned = !!prev.nationality && SANCTIONED_COUNTRY_CODES.has(prev.nationality);
+      const highRisk = !!prev.nationality && HIGH_RISK_COUNTRY_CODES.has(prev.nationality);
+      const scorePass = prev.overallConfidenceScore >= CONFIDENCE_THRESHOLD;
+
+      // Sanctioned → hard reject. High-risk → manual (EDD) review. Otherwise score-based:
+      // a passing score auto-certifies; a low score is routed to manual review (not rejected).
+      if (sanctioned) {
+        return { ...prev, gatewayPassed: false, gatewayResult: 'rejected', confidenceRejected: true };
+      }
+      if (highRisk) {
+        return { ...prev, gatewayPassed: false, gatewayResult: 'manual_review', confidenceRejected: false };
+      }
+      return {
+        ...prev,
+        gatewayPassed: scorePass,
+        gatewayResult: scorePass ? 'auto_certified' : 'manual_review',
+        confidenceRejected: false,
+      };
+    });
+  }, []);
 
   const simulateRisk = useCallback(() => {
     setTimeout(() => updateState('identityRisk', 88), 400);
@@ -451,6 +552,17 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
     }
   }, [currentStep, state.gatewayResult, simulateGateway]);
 
+  // Persist a gateway rejection (sanctioned nationality) to the onboarding process
+  useEffect(() => {
+    if (state.gatewayResult === 'rejected' && state.processId) {
+      fetch('/api/onboarding', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: state.processId, status: 'rejected', overallConfidenceScore: state.overallConfidenceScore }),
+      }).catch(() => {});
+    }
+  }, [state.gatewayResult, state.processId, state.overallConfidenceScore]);
+
   useEffect(() => {
     if (currentStep === 8 && !state.riskComplete) {
       const timer = setTimeout(() => simulateRisk(), 500);
@@ -464,6 +576,26 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
       return () => clearTimeout(timer);
     }
   }, [currentStep, state.credentialIssued, simulateCredential]);
+
+  // ─── Save progress to localStorage ──────────────────────────────────────
+  useEffect(() => {
+    if (state.processId && currentStep > 1) {
+      try {
+        localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify({ step: currentStep, processId: state.processId }));
+      } catch { /* localStorage unavailable */ }
+    }
+  }, [currentStep, state.processId]);
+
+  // ─── Check for saved progress on mount ──────────────────────────────────
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ONBOARDING_STORAGE_KEY);
+      if (saved) {
+        const { step, processId } = JSON.parse(saved) as { step: number; processId: string };
+        if (step > 1 && processId) setResumeBanner({ step, processId });
+      }
+    } catch { /* localStorage unavailable */ }
+  }, []);
 
   // ─── Navigation ─────────────────────────────────────────────────────────
 
@@ -489,13 +621,13 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
 
   const canProceed = () => {
     switch (currentStep) {
-      case 1: return state.accountCreated;
+      case 1: return state.accountCreated && !state.sanctionRejected;
       case 2: return state.passportUploaded;
       case 3: return state.biometricComplete;
       case 4: return state.financialComplete;
       case 5: return state.jurisdictionalComplete;
       case 6: return state.fusionComplete;
-      case 7: return state.gatewayResult !== 'pending';
+      case 7: return state.gatewayResult !== 'pending' && !state.confidenceRejected;
       case 8: return state.riskComplete;
       case 9: return state.credentialIssued;
       case 10: return state.agentReviewStatus === 'approved';
@@ -548,6 +680,22 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
           placeholder="Search nationality..."
           disabled={state.accountCreated}
         />
+        {state.nationality && SANCTIONED_COUNTRY_CODES.has(state.nationality) && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+            <AlertTriangle className="size-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-red-700">
+              <strong>Sanctioned Country:</strong> This nationality is subject to UK sanctions. Your application will be automatically rejected upon submission.
+            </div>
+          </div>
+        )}
+        {state.nationality && !SANCTIONED_COUNTRY_CODES.has(state.nationality) && HIGH_RISK_COUNTRY_CODES.has(state.nationality) && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-700">
+              <strong>High-Risk Jurisdiction:</strong> Your nationality triggers Enhanced Due Diligence (EDD) under MLR 2017 Reg.33. Additional verification will be required.
+            </div>
+          </div>
+        )}
       </div>
 
       <Separator />
@@ -603,16 +751,112 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
         />
       </div>
 
-      {!state.accountCreated ? (
+      {/* UK GDPR — informed consent (Art. 6 & 7) */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+        <div className="flex items-start gap-2">
+          <Lock className="size-4 text-teal-600 mt-0.5 shrink-0" />
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <strong className="text-foreground">Data Privacy Notice (UK GDPR).</strong> The personal data you provide —
+            name, contact details, nationality, identity documents and financial information — is processed by PropComply
+            AI solely to verify your identity and meet Anti-Money-Laundering (UK MLR 2017) and Right to Rent (Immigration
+            Act 2014) obligations. Lawful basis: <strong>consent</strong> (Art. 6(1)(a)) and <strong>legal obligation</strong>
+            (Art. 6(1)(c)). Your data is encrypted, masked by default, retained for up to 5 years, and never sold. You may
+            withdraw consent or request access, rectification or erasure at any time.
+          </div>
+        </div>
+        <label className={`flex items-start gap-2.5 ${state.accountCreated ? 'opacity-60 pointer-events-none' : 'cursor-pointer'}`}>
+          <Checkbox
+            checked={state.consentGiven}
+            onCheckedChange={v => updateState('consentGiven', v === true)}
+            disabled={state.accountCreated}
+            className="mt-0.5"
+          />
+          <span className="text-xs text-foreground">
+            I have read the privacy notice and <strong>consent</strong> to PropComply AI processing my personal data for
+            identity verification and compliance as described. <span className="text-red-500">*</span>
+          </span>
+        </label>
+      </div>
+
+      {state.sanctionRejected ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-3 rounded-lg border-2 border-red-300 bg-red-50 p-6"
+        >
+          <div className="flex size-14 items-center justify-center rounded-full bg-red-500">
+            <XCircle className="size-7 text-white" />
+          </div>
+          <div className="text-base font-bold text-red-800">Application Rejected</div>
+          <div className="text-sm text-red-600 text-center">{state.sanctionReason}</div>
+          <Badge className="bg-red-600 text-white">SANCTIONED COUNTRY — AUTOMATIC REJECTION</Badge>
+          <div className="text-xs text-red-500 text-center">
+            This rejection has been recorded. If you believe this is an error, please contact our compliance team.
+          </div>
+        </motion.div>
+      ) : !state.accountCreated ? (
         <Button
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-          onClick={() => updateState('accountCreated', true)}
-          disabled={!state.email || !state.firstName || !state.lastName}
+          onClick={async () => {
+            // Step 1a: Check sanctioned nationality
+            if (state.nationality && SANCTIONED_COUNTRY_CODES.has(state.nationality)) {
+              updateState('sanctionRejected', true);
+              updateState('sanctionReason', `Your country of nationality (${state.nationality}) is subject to UK sanctions under the Sanctions and Anti-Money Laundering Act 2018. We are unable to process this application in compliance with HM Treasury regulations.`);
+              // Persist rejection to DB
+              fetch('/api/onboarding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  applicantEmail: state.email,
+                  applicantName: `${state.firstName} ${state.lastName}`,
+                  nationality: state.nationality,
+                  registrationMethod: state.registrationMethod,
+                  mfaEnforced: state.mfaEnabled,
+                }),
+              }).then(r => r.json()).then(d => {
+                if (d.process?.id) {
+                  updateState('processId', d.process.id);
+                  // Auto-reject
+                  fetch('/api/onboarding', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: d.process.id, status: 'rejected', agentDecision: 'rejected' }),
+                  });
+                }
+              }).catch(() => {});
+              return;
+            }
+
+            // Step 1b: Create onboarding process in DB
+            try {
+              const res = await fetch('/api/onboarding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  applicantEmail: state.email,
+                  applicantName: `${state.firstName} ${state.lastName}`,
+                  nationality: state.nationality,
+                  registrationMethod: state.registrationMethod,
+                  mfaEnforced: state.mfaEnabled,
+                }),
+              });
+              const data = await res.json();
+              if (data.process?.id) updateState('processId', data.process.id);
+            } catch (_e) {}
+            updateState('accountCreated', true);
+          }}
+          disabled={!state.email || !state.firstName || !state.lastName || !state.consentGiven}
         >
           <UserPlus className="mr-2 size-4" />
           Create Account
         </Button>
-      ) : (
+      ) : null}
+      {!state.accountCreated && !state.sanctionRejected && !state.consentGiven && (
+        <p className="text-[11px] text-amber-600 text-center -mt-2">
+          You must give consent above to create your account.
+        </p>
+      )}
+      {state.accountCreated && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -1157,7 +1401,7 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
           animate={{ opacity: 1, scale: 1 }}
           transition={{ type: 'spring', damping: 15 }}
         >
-          {state.gatewayPassed ? (
+          {state.gatewayResult === 'auto_certified' ? (
             <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-emerald-300 bg-emerald-50 p-6">
               <motion.div
                 initial={{ scale: 0 }}
@@ -1169,13 +1413,13 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
               </motion.div>
               <div className="text-lg font-bold text-emerald-800">AUTO CERTIFIED</div>
               <div className="text-sm text-emerald-600 text-center">
-                VerifyMe Global Certified — Confidence Score {state.overallConfidenceScore} meets the threshold of 80
+                VerifyMe Global Certified — Confidence Score {state.overallConfidenceScore} meets the threshold of {CONFIDENCE_THRESHOLD}
               </div>
               <Badge className="bg-emerald-600 text-white px-4 py-1 text-sm">
                 <Sparkles className="mr-1 size-4" /> VerifyMe Global Certified
               </Badge>
             </div>
-          ) : (
+          ) : state.gatewayResult === 'manual_review' ? (
             <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-amber-300 bg-amber-50 p-6">
               <motion.div
                 initial={{ scale: 0 }}
@@ -1183,15 +1427,35 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
                 transition={{ type: 'spring', damping: 10, delay: 0.2 }}
                 className="flex size-16 items-center justify-center rounded-full bg-amber-500 shadow-lg"
               >
-                <AlertTriangle className="size-8 text-white" />
+                <Eye className="size-8 text-white" />
               </motion.div>
               <div className="text-lg font-bold text-amber-800">MANUAL REVIEW REQUIRED</div>
-              <div className="text-sm text-amber-600 text-center">
-                Confidence Score {state.overallConfidenceScore} is below the threshold of 80. Application routed to Manual Review Workflow.
+              <div className="text-sm text-amber-700 text-center">
+                {state.nationality && HIGH_RISK_COUNTRY_CODES.has(state.nationality)
+                  ? 'Enhanced Due Diligence (EDD) applies to this nationality under MLR 2017 Reg.33. The application proceeds to a human agent for review and sign-off.'
+                  : `Confidence Score ${state.overallConfidenceScore} is below the threshold of ${CONFIDENCE_THRESHOLD}. The application is routed to a human agent for manual review.`}
               </div>
-              <div className="flex items-center gap-2 text-xs text-amber-700">
-                <ArrowRight className="size-3" />
-                Routed to: Compliance Review Queue
+              <Badge className="bg-amber-600 text-white px-4 py-1 text-sm">
+                <Eye className="mr-1 size-4" /> Routed to Agent Review
+              </Badge>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 rounded-lg border-2 border-red-300 bg-red-50 p-6">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', damping: 10, delay: 0.2 }}
+                className="flex size-16 items-center justify-center rounded-full bg-red-500 shadow-lg"
+              >
+                <XCircle className="size-8 text-white" />
+              </motion.div>
+              <div className="text-lg font-bold text-red-800">APPLICATION REJECTED</div>
+              <div className="text-sm text-red-600 text-center">
+                This nationality is subject to UK sanctions and cannot be onboarded in compliance with HM Treasury regulations.
+              </div>
+              <Badge className="bg-red-600 text-white px-4 py-1 text-sm">Sanctions Restriction</Badge>
+              <div className="text-xs text-red-500 text-center mt-2">
+                This rejection has been recorded. If you believe this is an error, please contact our compliance team.
               </div>
             </div>
           )}
@@ -1200,7 +1464,7 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
 
       <div className="rounded-lg bg-muted/50 p-3">
         <div className="text-xs text-muted-foreground">
-          <strong>Gateway Logic:</strong> IF Score ≥ 80 → Auto-certified &quot;VerifyMe Global Certified&quot;. IF Score &lt; 80 → Routed to Manual Review Workflow with assigned compliance officer. The threshold is configurable per regulatory requirements.
+          <strong>Gateway Logic:</strong> High-risk / EDD nationalities → Manual Review (agent sign-off required). Otherwise: Score ≥ {CONFIDENCE_THRESHOLD} → Auto-certified &quot;VerifyMe Global Certified&quot;; Score &lt; {CONFIDENCE_THRESHOLD} → Manual Review. Sanctioned nationalities are rejected at registration. The threshold is configurable per regulatory requirements.
         </div>
       </div>
     </div>
@@ -1498,14 +1762,52 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
           <div className="flex flex-wrap gap-2">
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              onClick={() => {
+              onClick={async () => {
                 updateState('agentReviewStatus', 'in_review');
-                setTimeout(() => {
-                  updateState('agentReviewed', true);
-                  updateState('agentDecision', 'approved');
-                  updateState('reviewedBy', 'Agent Smith (Letting Agent)');
-                  updateState('agentReviewStatus', 'approved');
-                }, 2000);
+                await new Promise(r => setTimeout(r, 1800));
+
+                // Persist approval to onboarding process
+                if (state.processId) {
+                  fetch('/api/onboarding', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      id: state.processId,
+                      status: 'certified',
+                      agentDecision: 'approved',
+                      agentReviewed: true,
+                      reviewedBy: 'PropComply Agent',
+                      overallConfidenceScore: state.overallConfidenceScore,
+                      credentialToken: state.credentialToken,
+                      credentialIssued: true,
+                    }),
+                  }).catch(() => {});
+                }
+
+                // Create (or update) the identity profile in DB. For a signed-in
+                // tenant the API links it to their user id so it shows on My Profile.
+                try {
+                  await fetch('/api/identities', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      firstName: state.firstName,
+                      lastName: state.lastName,
+                      email: state.email,
+                      nationality: state.nationality || undefined,
+                      trustLevel: state.gatewayPassed ? 2 : 1,
+                      trustScore: state.overallConfidenceScore,
+                      status: 'verified',
+                      consentGiven: state.consentGiven,
+                      gdprCompliant: state.consentGiven,
+                    }),
+                  });
+                } catch { /* network error — profile creation will be retried on next approval */ }
+
+                updateState('agentReviewed', true);
+                updateState('agentDecision', 'approved');
+                updateState('reviewedBy', 'PropComply Agent (Letting Agent)');
+                updateState('agentReviewStatus', 'approved');
               }}
               disabled={state.agentReviewStatus === 'in_review'}
             >
@@ -1514,11 +1816,18 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
+              onClick={async () => {
+                if (state.processId) {
+                  fetch('/api/onboarding', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: state.processId, status: 'rejected', agentDecision: 'rejected', agentReviewed: true }),
+                  }).catch(() => {});
+                }
                 updateState('agentReviewStatus', 'rejected');
                 updateState('agentReviewed', true);
                 updateState('agentDecision', 'rejected');
-                updateState('reviewedBy', 'Agent Smith (Letting Agent)');
+                updateState('reviewedBy', 'PropComply Agent (Letting Agent)');
               }}
             >
               <ThumbsDown className="mr-1 size-4" />
@@ -1564,6 +1873,33 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
   };
 
   return (
+    <div className="flex flex-col gap-4">
+      {/* Resume banner — shows when a saved in-progress session is detected */}
+      {resumeBanner && currentStep === 1 && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <span className="font-medium">Resume where you left off?</span>
+            <span className="text-amber-600">You were on step {resumeBanner.step} of 10.</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100"
+              onClick={() => {
+                setCurrentStep(resumeBanner.step);
+                updateState('processId', resumeBanner.processId);
+                setResumeBanner(null);
+              }}>
+              Resume
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-amber-600"
+              onClick={() => {
+                try { localStorage.removeItem(ONBOARDING_STORAGE_KEY); } catch { /* ignore */ }
+                setResumeBanner(null);
+              }}>
+              Start fresh
+            </Button>
+          </div>
+        </div>
+      )}
     <div className="flex flex-col lg:flex-row gap-6">
       {/* Left: Vertical Stepper */}
       <div className="lg:w-72 shrink-0">
@@ -1708,6 +2044,7 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={() => {
+                try { localStorage.removeItem(ONBOARDING_STORAGE_KEY); } catch { /* ignore */ }
                 onComplete?.();
               }}
             >
@@ -1731,6 +2068,7 @@ export default function VerifyMeOnboarding({ onComplete }: VerifyMeOnboardingPro
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

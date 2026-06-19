@@ -198,13 +198,15 @@ function LoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: (open
 
         <div className="text-center">
           <p className="text-xs text-muted-foreground mb-3">Protected by enterprise-grade security · Zero Trust Architecture</p>
-          <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700" onClick={() => setShowDemoAccounts(!showDemoAccounts)}>
-            {showDemoAccounts ? 'Hide' : 'Show'} Demo Accounts
-            <ChevronRight className={`size-4 ml-1 transition-transform ${showDemoAccounts ? 'rotate-90' : ''}`} />
-          </Button>
+          {process.env.NODE_ENV === 'development' && (
+            <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700" onClick={() => setShowDemoAccounts(!showDemoAccounts)}>
+              {showDemoAccounts ? 'Hide' : 'Show'} Demo Accounts
+              <ChevronRight className={`size-4 ml-1 transition-transform ${showDemoAccounts ? 'rotate-90' : ''}`} />
+            </Button>
+          )}
         </div>
 
-        {showDemoAccounts && (
+        {process.env.NODE_ENV === 'development' && showDemoAccounts && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2 max-h-64 overflow-y-auto">
             <Separator />
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-1">Quick Access Demo Accounts</p>

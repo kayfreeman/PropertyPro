@@ -20,7 +20,8 @@ export const metadata: Metadata = {
   keywords: ["PropComply", "VerifyMe", "Compliance", "AML", "KYC", "CDD", "Identity Verification", "Trust Infrastructure", "Right to Rent", "Property Compliance"],
   authors: [{ name: "PropComply AI" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/favicon-mark.png",
+    apple: "/favicon-mark.png",
   },
   openGraph: {
     title: "PropComply AI + VerifyMe Global",

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import {
   BarChart,
   Bar,
@@ -77,6 +77,7 @@ import {
   formatDate,
   TRUST_LEVELS,
 } from '@/lib/platform-data';
+import StatusIndicator from '@/components/platform/StatusIndicator';
 
 // ── Types ──────────────────────────────────────────────────
 interface RiskScore {
@@ -149,7 +150,7 @@ const SEVERITY_CONFIG: Record<string, { color: string; bgColor: string; icon: Re
 const RISK_CAT_MAP = Object.fromEntries(RISK_CATEGORIES.map((rc) => [rc.category, rc]));
 
 // ── Animation Variants ────────────────────────────────────
-const cardVariants = {
+const cardVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
     opacity: 1,
@@ -273,7 +274,7 @@ export default function RiskIntelligence() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <Card key={i} className="animate-pulse">
@@ -555,15 +556,7 @@ export default function RiskIntelligence() {
                     {selectedRisk.overallScore.toFixed(1)}
                   </div>
                   <div>
-                    <Badge
-                      className="text-sm border-0"
-                      style={{
-                        color: RISK_CAT_MAP[selectedRisk.riskCategory]?.color ?? '#94a3b8',
-                        backgroundColor: RISK_CAT_MAP[selectedRisk.riskCategory]?.bgColor ?? '#f1f5f9',
-                      }}
-                    >
-                      {RISK_CAT_MAP[selectedRisk.riskCategory]?.label ?? selectedRisk.riskCategory}
-                    </Badge>
+                    <StatusIndicator domain="risk" status={selectedRisk.riskCategory} />
                     <p className="text-xs text-muted-foreground mt-1">
                       Fraud probability: {(selectedRisk.fraudProbability * 100).toFixed(1)}%
                     </p>
@@ -632,12 +625,7 @@ export default function RiskIntelligence() {
                             </span>
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              className="text-xs border-0"
-                              style={{ color: catInfo?.color ?? '#94a3b8', backgroundColor: catInfo?.bgColor ?? '#f1f5f9' }}
-                            >
-                              {catInfo?.label ?? rs.riskCategory}
-                            </Badge>
+                            <StatusIndicator domain="risk" status={rs.riskCategory} />
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs" style={{ color: trustLevel.color, borderColor: trustLevel.color + '60' }}>

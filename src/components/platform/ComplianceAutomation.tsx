@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -53,13 +53,16 @@ import { useSession } from 'next-auth/react';
 import {
   COMPLIANCE_TYPES,
   STATUS_COLORS,
-  getStatusStyle,
   TRUST_LEVELS,
   formatDate,
 } from '@/lib/platform-data';
 import { getNationalityByCode } from '@/lib/countries';
 import AMLWorkflow from '@/components/platform/AMLWorkflow';
+import StatusIndicator from '@/components/platform/StatusIndicator';
+import CompliancePipeline from '@/components/platform/CompliancePipeline';
+import { hasPermission, type UserRole } from '@/lib/rbac';
 import { Separator } from '@/components/ui/separator';
+import { ClipboardCheck, ArrowLeft } from 'lucide-react';
 
 // ── Types ──────────────────────────────────────────────────
 interface ComplianceCheck {
@@ -122,7 +125,7 @@ const REGULATIONS = [
 ];
 
 // ── Animation Variants ────────────────────────────────────
-const cardVariants = {
+const cardVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: (i: number) => ({
     opacity: 1,
@@ -131,40 +134,26 @@ const cardVariants = {
   }),
 };
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35 } },
 };
 
 // ── Status Badge ───────────────────────────────────────────
+// Resolved through the unified status framework (src/lib/status.ts) so compliance
+// check statuses are labelled/coloured consistently across the platform (AC6).
 function StatusBadge({ status }: { status: string }) {
-  const style = getStatusStyle(status);
-  return (
-    <Badge
-      className="text-xs font-medium border-0"
-      style={{ color: style.color, backgroundColor: style.bgColor }}
-    >
-      {status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-    </Badge>
-  );
+  return <StatusIndicator domain="compliance" status={status} />;
 }
 
 // ── Risk Badge ─────────────────────────────────────────────
 function RiskBadge({ rating }: { rating: string }) {
-  const style = getStatusStyle(rating);
-  return (
-    <Badge
-      className="text-xs font-medium border-0"
-      style={{ color: style.color, backgroundColor: style.bgColor }}
-    >
-      {rating.charAt(0).toUpperCase() + rating.slice(1)}
-    </Badge>
-  );
+  return <StatusIndicator domain="risk" status={rating} />;
 }
 
 // ── Mini Progress Ring ─────────────────────────────────────
@@ -199,6 +188,9 @@ function ComplianceChecksTab() {
     role: session?.user?.role || '',
   });
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  // Drill-down: when a profile name is clicked, the Compliance Checks table
+  // section is replaced by that profile's compliance detail.
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
 
   const complianceChecks = data?.complianceChecks ?? [];
   const summary = data?.summary;
@@ -231,6 +223,13 @@ function ComplianceChecksTab() {
     if (typeFilter === 'all') return complianceChecks;
     return complianceChecks.filter((c) => c.checkType === typeFilter);
   }, [complianceChecks, typeFilter]);
+
+  // Checks for the drilled-in profile (and that profile's details)
+  const selectedChecks = useMemo(
+    () => (selectedProfileId ? complianceChecks.filter((c) => c.profileId === selectedProfileId) : []),
+    [complianceChecks, selectedProfileId]
+  );
+  const selectedProfile = selectedChecks[0]?.profile ?? null;
 
   // Workflow counts
   const workflowCounts = useMemo(() => ({
@@ -460,7 +459,81 @@ function ComplianceChecksTab() {
         </Card>
       </motion.div>
 
+      {/* ── Profile Compliance Detail (drill-down) ──────── */}
+      {selectedProfileId && selectedProfile && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Button variant="ghost" size="sm" className="gap-1.5 shrink-0" onClick={() => setSelectedProfileId(null)}>
+                    <ArrowLeft className="size-4" />
+                    Back
+                  </Button>
+                  <div>
+                    <CardTitle className="text-lg">{selectedProfile.firstName} {selectedProfile.lastName}</CardTitle>
+                    <CardDescription>{selectedProfile.email}</CardDescription>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedProfile.nationality && (
+                    <Badge variant="outline" className="text-[10px]">{getNationalityByCode(selectedProfile.nationality)}</Badge>
+                  )}
+                  {(() => {
+                    const lvl = selectedProfile.trustLevel ?? 0;
+                    const td = TRUST_LEVELS[lvl] ?? TRUST_LEVELS[0];
+                    return (
+                      <Badge variant="outline" className="text-[10px]" style={{ color: td.color, borderColor: td.color + '40', backgroundColor: td.bgColor }}>
+                        Trust L{lvl}
+                      </Badge>
+                    );
+                  })()}
+                  <Badge variant="outline" className="text-[10px] capitalize">{selectedProfile.status}</Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Summary chips */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-2xl font-bold">{selectedChecks.length}</p>
+                  <p className="text-xs text-muted-foreground">Total Checks</p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-2xl font-bold text-emerald-600">{selectedChecks.filter((c) => c.status === 'passed').length}</p>
+                  <p className="text-xs text-muted-foreground">Passed</p>
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-600">{selectedChecks.filter((c) => ['failed', 'escalated', 'under_review'].includes(c.status)).length}</p>
+                  <p className="text-xs text-muted-foreground">Needs Review</p>
+                </div>
+              </div>
+
+              {/* This profile's checks */}
+              <div className="rounded-md border divide-y">
+                {selectedChecks.map((check) => (
+                  <div key={check.id} className="flex items-center gap-3 p-3">
+                    <div className="p-1.5 rounded-md shrink-0" style={{ backgroundColor: TYPE_COLORS[check.checkType]?.bgColor ?? '#f1f5f9' }}>
+                      {TYPE_COLORS[check.checkType]?.icon ?? <FileCheck className="size-5 text-gray-400" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{COMPLIANCE_TYPES.find((c) => c.type === check.checkType)?.name ?? check.checkType}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {check.checkProvider ?? 'No provider'}{check.reviewedBy ? ` · reviewed by ${check.reviewedBy}` : ''} · {formatDate(check.createdAt)}
+                      </p>
+                    </div>
+                    <StatusBadge status={check.status} />
+                    <RiskBadge rating={check.riskRating} />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* ── Compliance Checks Table ─────────────────────── */}
+      {!selectedProfileId && (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
         <Card>
           <CardHeader>
@@ -523,14 +596,18 @@ function ComplianceChecksTab() {
                       return (
                         <TableRow key={check.id}>
                           <TableCell className="font-medium">
-                            <div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProfileId(check.profileId)}
+                              className="text-left hover:text-teal-700 hover:underline transition-colors"
+                            >
                               {check.profile.firstName} {check.profile.lastName}
                               {check.profile.nationality && (
                                 <div className="text-[10px] text-muted-foreground mt-0.5">
                                   {getNationalityByCode(check.profile.nationality)}
                                 </div>
                               )}
-                            </div>
+                            </button>
                           </TableCell>
                           <TableCell className="hidden md:table-cell">
                             <Tooltip>
@@ -580,6 +657,7 @@ function ComplianceChecksTab() {
           </CardContent>
         </Card>
       </motion.div>
+      )}
 
       {/* ── Regulatory Framework Section ────────────────── */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
@@ -616,9 +694,19 @@ function ComplianceChecksTab() {
 
 // ── Main Component ─────────────────────────────────────────
 export default function ComplianceAutomation() {
+  const { data: session } = useSession();
+  const role = (session?.user?.role ?? 'tenant') as UserRole;
+  // Reviewers (risk analyst, compliance officer, MLRO, admin) land on the
+  // decisioning pipeline first; everyone else on the read-only checks overview.
+  const canReview = hasPermission(role, 'compliance:review');
+
   return (
-    <Tabs defaultValue="checks" className="space-y-6">
+    <Tabs defaultValue={canReview ? 'pipeline' : 'checks'} className="space-y-6">
       <TabsList className="bg-muted/60">
+        <TabsTrigger value="pipeline" className="gap-1.5 data-[state=active]:bg-cyan-50 data-[state=active]:text-cyan-700">
+          <ClipboardCheck className="size-3.5" />
+          Compliance Pipeline
+        </TabsTrigger>
         <TabsTrigger value="checks" className="gap-1.5 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
           <FileCheck className="size-3.5" />
           Compliance Checks
@@ -628,6 +716,10 @@ export default function ComplianceAutomation() {
           AML Workflow
         </TabsTrigger>
       </TabsList>
+
+      <TabsContent value="pipeline">
+        <CompliancePipeline />
+      </TabsContent>
 
       <TabsContent value="checks">
         <ComplianceChecksTab />

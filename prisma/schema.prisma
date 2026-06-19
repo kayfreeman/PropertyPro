@@ -1,13 +1,36 @@
-// PropComply AI + VerifyMe Global - Enterprise Database Schema
-// Trust Infrastructure Platform
+// PropComply AI — Enterprise Database Schema v2
+// Multi-tenant AML/KYC Compliance Platform
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// FIRM / TENANT DOMAIN
+// ============================================
+
+model Firm {
+  id                 String   @id @default(cuid())
+  name               String
+  registrationNumber String?
+  firmType           String   @default("estate_agency") // estate_agency, letting_agency, property_management
+  mlroId             String?  // FK to the designated MLRO user
+  riskAppetite       String   @default("standard") // low, standard, enhanced
+  amlPolicyVersion   String?
+  hmrcRegistration   String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users              User[]
+  cases              Case[]
+  sars               SAR[]
 }
 
 // ============================================
@@ -20,14 +43,14 @@ model IdentityProfile {
   lastName        String
   email           String   @unique
   phone           String?
-  dateOfBirth     String?
+  dateOfBirth     DateTime?
   nationality     String?
-  trustLevel      Int      @default(0) // 0-5 Trust Ladder
-  trustScore      Float    @default(0) // 0-100
+  trustLevel      Int      @default(0)
+  trustScore      Float    @default(0)
   status          String   @default("pending") // pending, verified, suspended, rejected
   consentGiven    Boolean  @default(false)
   gdprCompliant   Boolean  @default(false)
-  userId          String?  // Links profile to User account for tenant data isolation
+  userId          String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -39,55 +62,79 @@ model IdentityProfile {
   riskScores      RiskScore[]
   propertyApps    PropertyApplication[]
   auditLogs       AuditLog[]
+  ubos            UBO[]
+  cases           Case[]
+  sars            SAR[]
+  guarantors      GuarantorSubmission[]
 }
 
 model IdentityCredential {
-  id              String   @id @default(cuid())
-  profileId       String
-  credentialType  String   // passport, national_id, visa, residence_permit, biometric, banking, employer, university, government
-  credentialValue String   // encrypted/reference
-  trustLevel      Int      // maps to Trust Ladder level
-  issuingCountry  String?
-  issuingAuthority String?
-  validFrom       DateTime?
-  validTo         DateTime?
-  verificationStatus String @default("pending") // pending, verified, failed, expired
-  verifiedAt      DateTime?
-  evidenceHash    String?  // hash of supporting evidence
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  profileId          String
+  credentialType     String
+  credentialValue    String   // stored as reference/token — never raw PII
+  trustLevel         Int
+  issuingCountry     String?
+  issuingAuthority   String?
+  validFrom          DateTime?
+  validTo            DateTime?
+  verificationStatus String   @default("pending")
+  verifiedAt         DateTime?
+  evidenceHash       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile            IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model IdentityEvidence {
-  id              String   @id @default(cuid())
-  profileId       String
-  evidenceType    String   // document, biometric, behavioral, institutional, government
-  evidenceData    String   // JSON - encrypted evidence metadata
-  confidence      Float    @default(0) // 0-1 confidence score
-  source          String?
-  verifiedBy      String?
-  verifiedAt      DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime @default(now())
+  id           String   @id @default(cuid())
+  profileId    String
+  evidenceType String
+  evidenceData String   // JSON — encrypted reference metadata
+  confidence   Float    @default(0)
+  source       String?
+  verifiedBy   String?
+  verifiedAt   DateTime?
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
 
-  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile      IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model VerificationRecord {
-  id              String   @id @default(cuid())
-  profileId       String
-  verificationType String  // document, biometric_face, liveness, open_banking, income, employer, university, government
-  status          String   @default("pending") // pending, in_progress, passed, failed, expired
-  provider        String?  // verification provider
-  result          String?  // JSON result data
-  confidence      Float    @default(0)
-  attemptCount    Int      @default(1)
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
+  id               String   @id @default(cuid())
+  profileId        String
+  verificationType String
+  status           String   @default("pending")
+  provider         String?
+  result           String?  // JSON
+  confidence       Float    @default(0)
+  attemptCount     Int      @default(1)
+  completedAt      DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
 
-  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile          IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// UBO — Ultimate Beneficial Owner
+model UBO {
+  id                  String  @id @default(cuid())
+  profileId           String  // the corporate client
+  name                String
+  dateOfBirth         DateTime?
+  nationality         String?
+  ownershipPercentage Float
+  controlType         String  @default("shares") // shares, voting_rights, other
+  isPEP               Boolean @default(false)
+  isSanctioned        Boolean @default(false)
+  companiesHouseRef   String?
+  verificationStatus  String  @default("pending") // pending, verified, flagged
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  profile             IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 // ============================================
@@ -95,21 +142,97 @@ model VerificationRecord {
 // ============================================
 
 model ComplianceCheck {
+  id            String   @id @default(cuid())
+  profileId     String
+  checkType     String   // aml, kyc, cdd, edd, sanctions, pep, adverse_media, right_to_rent
+  status        String   @default("pending")
+  riskRating    String   @default("low")
+  checkProvider String?
+  results       String?  // JSON
+  evidenceRef   String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  profile       IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// CASE MANAGEMENT DOMAIN
+// ============================================
+
+model Case {
   id              String   @id @default(cuid())
-  profileId       String
-  checkType       String   // aml, kyc, cdd, edd, sanctions, pep, adverse_media, right_to_rent
-  status          String   @default("pending") // pending, in_progress, passed, failed, escalated
-  riskRating      String   @default("low") // low, medium, high, critical
-  checkProvider   String?
-  results         String?  // JSON - detailed results
-  evidenceRef     String?  // reference to supporting evidence
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  expiresAt       DateTime?
+  firmId          String
+  caseRef         String   @unique  // e.g. CASE-2026-001234
+  caseType        String   // individual, corporate
+  clientRole      String   // buyer, seller, landlord, tenant
+  profileId       String?
+  status          String   @default("draft")
+  // draft → open → pending_edd → pending_mlro → pending_sar → cleared → rejected → closed
+  currentStep     String   @default("identity_verification")
+  ownerId         String?  // assigned compliance officer
+  riskLevel       String?  // low, medium, high
+  eddRequired     Boolean  @default(false)
+  eddCompletedAt  DateTime?
+  mlroSignOffRequired Boolean @default(false)
+  mlroSignedOffAt DateTime?
+  mlroSignedOffBy String?
+  mlroNotes       String?
+  autoCleared     Boolean  @default(false)
+  closedAt        DateTime?
+  closedReason    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  firm            Firm            @relation(fields: [firmId], references: [id])
+  profile         IdentityProfile? @relation(fields: [profileId], references: [id])
+  actions         CaseAction[]
+  sars            SAR[]
+  auditLogs       AuditLog[]
+}
+
+model CaseAction {
+  id          String   @id @default(cuid())
+  caseId      String
+  actionType  String   // approve, request_info, override, escalate, reject, edd_complete, mlro_sign_off, sar_raise
+  performedBy String
+  performedAt DateTime @default(now())
+  outcome     String?
+  notes       String?
+  nextOwner   String?
+
+  case        Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// SAR DOMAIN (RESTRICTED — TIPPING-OFF CRITICAL)
+// ============================================
+
+model SAR {
+  id              String   @id @default(cuid())
+  firmId          String
+  caseId          String?
+  profileId       String?
+  sarRef          String   @unique  // e.g. SAR-2026-001
+  draftContent    String?  // AI-generated draft — stored as JSON
+  status          String   @default("draft") // draft, pending_mlro, approved, filed, rejected
+  // TIPPING-OFF: this entire model is restricted; never surfaced to client/agent roles
+  isRestricted    Boolean  @default(true)
+  mlroDecision    String?  // approve, reject, request_more_info
+  mlroDecidedAt   DateTime?
+  mlroDecidedBy   String?
+  mlroNotes       String?
+  filedAt         DateTime?
+  filingRef       String?  // NCA reference if filed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  firm            Firm             @relation(fields: [firmId], references: [id])
+  case            Case?            @relation(fields: [caseId], references: [id])
+  profile         IdentityProfile? @relation(fields: [profileId], references: [id])
 }
 
 // ============================================
@@ -117,35 +240,39 @@ model ComplianceCheck {
 // ============================================
 
 model RiskScore {
-  id              String   @id @default(cuid())
-  profileId       String
-  overallScore    Float    @default(0) // 0-100 (100 = lowest risk)
-  riskCategory    String   @default("medium") // low, medium, high, critical
-  fraudProbability Float   @default(0) // 0-1
-  identityRisk    Float    @default(0)
-  financialRisk   Float    @default(0)
-  behavioralRisk  Float    @default(0)
-  complianceRisk  Float    @default(0)
-  riskFactors     String?  // JSON - detailed risk factor breakdown
-  modelVersion    String?
-  explainability  String?  // JSON - explainability data for the score
-  createdAt       DateTime @default(now())
+  id               String  @id @default(cuid())
+  profileId        String
+  overallScore     Float   @default(0) // 0-100 (higher = lower risk)
+  riskCategory     String  @default("medium")
+  fraudProbability Float   @default(0)
+  identityRisk     Float   @default(0)
+  financialRisk    Float   @default(0)
+  behavioralRisk   Float   @default(0)
+  complianceRisk   Float   @default(0)
+  propertyRisk     Float   @default(0)   // property-specific factor
+  epcRating        String?               // A-G EPC rating signal
+  hmoFlag          Boolean @default(false)
+  ownershipComplexity Float @default(0)  // 0-1 complexity score
+  riskFactors      String? // JSON
+  modelVersion     String?
+  explainability   String? // JSON
+  createdAt        DateTime @default(now())
 
-  profile         IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile          IdentityProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 }
 
 model FraudAlert {
-  id              String   @id @default(cuid())
-  alertType       String   // identity_fraud, document_fraud, synthetic_identity, money_laundering, suspicious_behavior
-  severity        String   @default("medium") // low, medium, high, critical
-  status          String   @default("open") // open, investigating, confirmed, false_positive, resolved
-  description     String
-  evidenceRef     String?  // JSON
+  id               String   @id @default(cuid())
+  alertType        String
+  severity         String   @default("medium")
+  status           String   @default("open")
+  description      String
+  evidenceRef      String?
   relatedProfileId String?
-  assignedTo      String?
-  resolvedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  assignedTo       String?
+  resolvedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // ============================================
@@ -153,30 +280,39 @@ model FraudAlert {
 // ============================================
 
 model Property {
-  id              String   @id @default(cuid())
-  address         String
-  city            String
-  postcode        String
-  country         String   @default("GB")
-  propertyType    String   // residential, commercial, hmo
-  bedrooms        Int?
-  complianceStatus String  @default("pending") // pending, compliant, non_compliant, under_review
-  lastInspection  DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  address          String
+  city             String
+  postcode         String
+  country          String   @default("GB")
+  propertyType     String   // residential, commercial, hmo
+  bedrooms         Int?
+  // Property-specific risk signals (FR-PRS002)
+  epcRating        String?  // A, B, C, D, E, F, G
+  hmoLicensed      Boolean  @default(false)
+  hmoLicenceRef    String?
+  landRegistryRef  String?
+  lastSalePrice    Float?
+  lastSaleDate     DateTime?
+  transactionType  String?  // purchase, rental
+  ownershipComplex Boolean  @default(false) // complex ownership structure flag
+  complianceStatus String   @default("pending")
+  lastInspection   DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  applications    PropertyApplication[]
+  applications     PropertyApplication[]
 }
 
 model PropertyApplication {
   id              String   @id @default(cuid())
   propertyId      String
   profileId       String
-  applicationType String   // tenancy, purchase, rental
-  status          String   @default("submitted") // submitted, under_review, approved, rejected, withdrawn
+  applicationType String
+  status          String   @default("submitted")
   complianceClear Boolean  @default(false)
   riskClear       Boolean  @default(false)
-  rightToRent     String   @default("pending") // pending, verified, failed, expired
+  rightToRent     String   @default("pending")
   guarantorReplaced Boolean @default(false)
   depositAmount   Float?
   monthlyAmount   Float?
@@ -185,7 +321,7 @@ model PropertyApplication {
   submittedAt     DateTime @default(now())
   decidedAt       DateTime?
 
-  property        Property @relation(fields: [propertyId], references: [id])
+  property        Property        @relation(fields: [propertyId], references: [id])
   profile         IdentityProfile @relation(fields: [profileId], references: [id])
 }
 
@@ -196,11 +332,11 @@ model PropertyApplication {
 model Partner {
   id              String   @id @default(cuid())
   name            String
-  partnerType     String   // bank, insurer, mortgage_provider, remittance, employer, university
-  status          String   @default("active") // active, suspended, terminated
+  partnerType     String
+  status          String   @default("active")
   apiEndpoint     String?
-  integrationType String?  // api, webhook, batch, manual
-  trustRating     Float    @default(0) // 0-100
+  integrationType String?
+  trustRating     Float    @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -209,50 +345,53 @@ model Partner {
 }
 
 model PartnerReferral {
-  id              String   @id @default(cuid())
-  partnerId       String
-  profileId       String?
-  referralType    String   // banking, insurance, mortgage, remittance
-  status          String   @default("pending") // pending, sent, accepted, completed, failed
-  referralData    String?  // JSON
-  createdAt       DateTime @default(now())
+  id           String   @id @default(cuid())
+  partnerId    String
+  profileId    String?
+  referralType String
+  status       String   @default("pending")
+  referralData String?
+  createdAt    DateTime @default(now())
 
-  partner         Partner @relation(fields: [partnerId], references: [id])
+  partner      Partner @relation(fields: [partnerId], references: [id])
 }
 
 // ============================================
-// AUDIT & GOVERNANCE
+// AUDIT & GOVERNANCE — TAMPER-EVIDENT
 // ============================================
 
 model AuditLog {
-  id              String   @id @default(cuid())
-  profileId       String?
-  userId          String?
-  action          String
-  performedBy     String?
-  resource        String
-  resourceId      String?
-  details         String?  // JSON
-  ipAddress       String?
-  timestamp       DateTime @default(now())
+  id          String   @id @default(cuid())
+  profileId   String?
+  caseId      String?
+  userId      String?
+  action      String
+  performedBy String?
+  resource    String
+  resourceId  String?
+  details     String?  // JSON
+  ipAddress   String?
+  hashChain   String?  // SHA-256(previous_hash + id + action + timestamp) for tamper-evidence
+  timestamp   DateTime @default(now())
 
-  profile         IdentityProfile? @relation(fields: [profileId], references: [id])
-  user            User? @relation(fields: [userId], references: [id])
+  profile     IdentityProfile? @relation(fields: [profileId], references: [id])
+  case        Case?            @relation(fields: [caseId], references: [id])
+  user        User?            @relation(fields: [userId], references: [id])
 }
 
 model ConsentRecord {
-  id              String   @id @default(cuid())
-  profileId       String?
-  userId          String?
-  consentType     String   // data_processing, marketing, third_party_sharing, automated_decisions
-  granted         Boolean
-  purpose         String?
-  legalBasis      String?  // consent, legitimate_interest, contract, legal_obligation
-  withdrawnAt     DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  profileId   String?
+  userId      String?
+  consentType String
+  granted     Boolean
+  purpose     String?
+  legalBasis  String?
+  withdrawnAt DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
 
-  user            User? @relation(fields: [userId], references: [id])
+  user        User? @relation(fields: [userId], references: [id])
 }
 
 // ============================================
@@ -260,60 +399,67 @@ model ConsentRecord {
 // ============================================
 
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  name            String
-  passwordHash    String
-  role            String   @default("viewer") // platform_admin, compliance_officer, property_manager, identity_verifier, risk_analyst, partner_user, tenant
-  avatar          String?  // initials or URL
-  department      String?
-  jobTitle        String?
-  phone           String?
-  mfaEnabled      Boolean  @default(false)
-  mfaSecret       String?
-  lastLoginAt     DateTime?
-  lastLoginIp     String?
-  loginAttempts   Int      @default(0)
-  lockedUntil     DateTime?
-  partnerId       String?  // Links partner_user to their Partner for data isolation
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String   // bcrypt hash
+  role          String   @default("tenant")
+  // platform_admin, mlro, compliance_officer, property_manager,
+  // identity_verifier, risk_analyst, partner_integration_manager, partner_user, tenant, auditor
+  firmId        String?  // scopes user to a firm/tenant
+  avatar        String?
+  department    String?
+  jobTitle      String?
+  phone         String?
+  mfaEnabled    Boolean  @default(false)
+  mfaSecret     String?  // TOTP secret (encrypted at rest)
+  mfaVerified   Boolean  @default(false) // true once TOTP confirmed
+  lastLoginAt   DateTime?
+  lastLoginIp   String?
+  loginAttempts Int      @default(0)
+  lockedUntil   DateTime?
+  partnerId     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  sessions        UserSession[]
-  auditLogs       AuditLog[]
-  notifications   Notification[]
-  consentRecords  ConsentRecord[]
-  profiles        IdentityProfile[]
-  partner         Partner? @relation(fields: [partnerId], references: [id])
+  firm          Firm?            @relation(fields: [firmId], references: [id])
+  partner       Partner?         @relation(fields: [partnerId], references: [id])
+  sessions      UserSession[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  consentRecords ConsentRecord[]
+  profiles      IdentityProfile[]
 }
 
 model UserSession {
-  id              String   @id @default(cuid())
-  userId          String
-  token           String   @unique
-  device          String?
-  browser         String?
-  ipAddress       String?
-  expiresAt       DateTime
-  createdAt       DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  device    String?
+  browser   String?
+  ipAddress String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
-  id              String   @id @default(cuid())
-  userId          String
-  title           String
-  message         String
-  type            String   @default("info") // info, warning, error, success, compliance, risk
-  category        String   @default("system") // system, compliance, risk, property, identity, partner
-  read            Boolean  @default(false)
-  actionUrl       String?
-  createdAt       DateTime @default(now())
-  readAt          DateTime?
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("info")
+  category  String   @default("system")
+  read      Boolean  @default(false)
+  // TIPPING-OFF: never set actionUrl or message content that implies a SAR
+  isSarRelated Boolean @default(false) // if true, filtered from client/agent views
+  actionUrl String?
+  createdAt DateTime @default(now())
+  readAt    DateTime?
 
-  user            User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ============================================
@@ -321,11 +467,14 @@ model Notification {
 // ============================================
 
 model PlatformConfig {
-  id              String   @id @default(cuid())
-  key             String   @unique
-  value           String
-  description     String?
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  firmId      String?  // null = platform-wide; set = firm-specific
+  key         String
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([firmId, key])
 }
 
 // ============================================
@@ -333,167 +482,155 @@ model PlatformConfig {
 // ============================================
 
 model OnboardingProcess {
-  id              String   @id @default(cuid())
-  profileId       String?
-  applicantEmail  String
-  applicantName   String
-  nationality     String?
-  currentStep     Int      @default(1) // 1-10 steps
-  status          String   @default("draft") // draft, in_progress, pending_review, certified, rejected
-  
-  // Step 1: Account Registration
-  registrationMethod String? // email, google, microsoft
-  mfaEnforced     Boolean  @default(false)
-  
-  // Step 2: Identity Evidence
-  passportUploaded Boolean @default(false)
-  visaUploaded     Boolean @default(false)
-  financialFilesUploaded Boolean @default(false)
-  
-  // Step 3: Biometric Verification
-  selfieCaptured   Boolean @default(false)
-  livenessScore    Float?
-  faceMatchScore   Float?
-  deepfakeScore    Float?
-  biometricConfidence Float?
-  
-  // Step 4: Financial Behaviour
-  financialMonthsAnalyzed Int?
-  incomeStability  Float?
-  spendingCoherence Float?
-  professionMatch  Float?
-  
-  // Step 5: Cross-Jurisdictional
-  sourceCountryDb  String? // e.g. NIN, Aadhaar
-  sourceCountryVerified Boolean @default(false)
-  homeOfficeVerified Boolean @default(false)
+  id                         String   @id @default(cuid())
+  profileId                  String?
+  firmId                     String?
+  applicantEmail             String
+  applicantName              String
+  nationality                String?
+  currentStep                Int      @default(1)
+  status                     String   @default("draft")
+  registrationMethod         String?
+  mfaEnforced                Boolean  @default(false)
+  passportUploaded           Boolean  @default(false)
+  visaUploaded               Boolean  @default(false)
+  financialFilesUploaded     Boolean  @default(false)
+  selfieCaptured             Boolean  @default(false)
+  livenessScore              Float?
+  faceMatchScore             Float?
+  deepfakeScore              Float?
+  biometricConfidence        Float?
+  financialMonthsAnalyzed    Int?
+  incomeStability            Float?
+  spendingCoherence          Float?
+  professionMatch            Float?
+  sourceCountryDb            String?
+  sourceCountryVerified      Boolean  @default(false)
+  homeOfficeVerified         Boolean  @default(false)
   professionalRegistryVerified Boolean @default(false)
-  
-  // Step 6: Triple Source Corroboration
-  biometricScore   Float?
-  behaviouralScore Float?
-  jurisdictionalScore Float?
-  overallConfidenceScore Float? // 0-100
-  
-  // Step 7: Confidence Gateway
-  gatewayPassed    Boolean @default(false)
-  gatewayResult    String? // auto_certified, manual_review
-  
-  // Step 8: Risk Assessment
-  identityRisk     Float?
-  amlRisk          Float?
-  financialRisk    Float?
-  tenancyRisk      Float?
-  
-  // Step 9: Credential Generation
-  credentialIssued Boolean @default(false)
-  credentialToken  String?
-  
-  // Step 10: Agent Review
-  agentReviewed    Boolean @default(false)
-  agentDecision    String? // approved, rejected, more_evidence_needed
-  reviewedBy       String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  biometricScore             Float?
+  behaviouralScore           Float?
+  jurisdictionalScore        Float?
+  overallConfidenceScore     Float?
+  gatewayPassed              Boolean  @default(false)
+  gatewayResult              String?
+  identityRisk               Float?
+  amlRisk                    Float?
+  financialRisk              Float?
+  tenancyRisk                Float?
+  credentialIssued           Boolean  @default(false)
+  credentialToken            String?
+  agentReviewed              Boolean  @default(false)
+  agentDecision              String?
+  reviewedBy                 String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 }
 
 model AMLProcess {
-  id              String   @id @default(cuid())
-  profileId       String?
-  transactionRef  String   @unique
-  propertyRef     String?
-  currentStep     Int      @default(1) // 1-7 steps
-  status          String   @default("initialized") // initialized, identity_check, cdd, screening, edd, decision, sar, completed
-  
-  // Step 1: Transaction Initialization
-  transactionType String? // property_application, real_estate_participant
-  transactionAmount Float?
-  
-  // Step 2: Identity Verification Integration
-  identityVerified Boolean @default(false)
-  kycComplete      Boolean @default(false)
-  
-  // Step 3: Customer Due Diligence
-  cddComplete      Boolean @default(false)
-  riskClassification String? // low, medium, high, critical
-  
-  // Step 4: Watchlist Screening
-  sanctionsCheck   String? // clear, match, potential_match
-  pepCheck         String? // clear, match, potential_match
-  adverseMediaCheck String? // clear, match, potential_match
-  screeningProvider String?
-  screeningDate    DateTime?
-  
-  // Step 5: Source of Funds & EDD
-  eddRequired      Boolean @default(false)
-  sofVerified      Boolean @default(false)
-  sourceOfFunds    String?
-  eddComplete      Boolean @default(false)
-  
-  // Step 6: Compliance Decision
-  decisionResult   String? // cleared, flagged, locked_down
-  amlRiskScore     Float?
-  decidedBy        String?
-  decidedAt        DateTime?
-  
-  // Step 7: SAR Generation
-  sarGenerated     Boolean @default(false)
-  sarReference     String?
-  sarFiledAt       DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  profileId          String?
+  firmId             String?
+  caseId             String?
+  transactionRef     String   @unique
+  propertyRef        String?
+  currentStep        Int      @default(1)
+  status             String   @default("initialized")
+  transactionType    String?
+  transactionAmount  Float?
+  identityVerified   Boolean  @default(false)
+  kycComplete        Boolean  @default(false)
+  cddComplete        Boolean  @default(false)
+  riskClassification String?
+  sanctionsCheck     String?
+  pepCheck           String?
+  adverseMediaCheck  String?
+  screeningProvider  String?
+  screeningDate      DateTime?
+  eddRequired        Boolean  @default(false)
+  sofVerified        Boolean  @default(false)
+  sourceOfFunds      String?
+  eddComplete        Boolean  @default(false)
+  mlroSignOffRequired Boolean @default(false)
+  mlroSignedOffAt    DateTime?
+  mlroSignedOffBy    String?
+  decisionResult     String?  // cleared, flagged, locked_down
+  amlRiskScore       Float?
+  decidedBy          String?
+  decidedAt          DateTime?
+  sarGenerated       Boolean  @default(false)
+  sarReference       String?
+  sarFiledAt         DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model RightToRentProcess {
-  id              String   @id @default(cuid())
-  profileId       String?
-  agentId         String?
-  propertyId      String?
-  currentStep     Int      @default(1) // 1-7 steps
-  status          String   @default("initiated") // initiated, visa_ingestion, home_office, status_check, risk_assessment, certification, monitoring, completed
-  
-  // Step 1: Initiate Check
-  initiatedBy     String?
-  checkReason     String?
-  
-  // Step 2: Visa Ingestion & OCR
-  visaType        String? // tier2, student, eu_settlement, resident_permit, etc.
-  documentAuthentic Boolean @default(false)
-  tamperingCheck  Boolean @default(false)
-  ocrConfidence   Float?
-  
-  // Step 3: Home Office Validation
-  visaGrantValid  Boolean @default(false)
-  ukResidenceData Boolean @default(false)
-  immigrationPermissions Boolean @default(false)
-  homeOfficeCheckDate DateTime?
-  
-  // Step 4: Status & Visa Verification
-  permanentRight  Boolean @default(false)
-  timeLimitedStatus Boolean @default(false)
-  expiryDate      DateTime?
-  restrictions    String? // JSON
-  
-  // Step 5: Risk & Compliance Assessment
-  complianceResult String? // pass, fail, review
-  rulesEngineResult String? // JSON
-  statutoryGuidelineMet Boolean @default(false)
-  
-  // Step 6: Evidence Generation & Certification
-  certificateIssued Boolean @default(false)
-  certificateToken String?
-  evidenceTrailRef String?
-  issuedAt        DateTime?
-  expiresAt       DateTime?
-  
-  // Step 7: Continuous Expiry Monitoring
-  monitoringActive Boolean @default(false)
-  daysToExpiry    Int?
-  lastAlertSent   DateTime?
-  alertStatus     String? // none, warning, critical, expired
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                           String   @id @default(cuid())
+  profileId                    String?
+  agentId                      String?
+  propertyId                   String?
+  currentStep                  Int      @default(1)
+  status                       String   @default("initiated")
+  initiatedBy                  String?
+  checkReason                  String?
+  visaType                     String?
+  documentAuthentic            Boolean  @default(false)
+  tamperingCheck               Boolean  @default(false)
+  ocrConfidence                Float?
+  visaGrantValid               Boolean  @default(false)
+  ukResidenceData              Boolean  @default(false)
+  immigrationPermissions       Boolean  @default(false)
+  homeOfficeCheckDate          DateTime?
+  permanentRight               Boolean  @default(false)
+  timeLimitedStatus            Boolean  @default(false)
+  expiryDate                   DateTime?
+  restrictions                 String?
+  complianceResult             String?
+  rulesEngineResult            String?
+  statutoryGuidelineMet        Boolean  @default(false)
+  certificateIssued            Boolean  @default(false)
+  certificateToken             String?
+  evidenceTrailRef             String?
+  issuedAt                     DateTime?
+  expiresAt                    DateTime?
+  monitoringActive             Boolean  @default(false)
+  daysToExpiry                 Int?
+  lastAlertSent                DateTime?
+  alertStatus                  String?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+}
+
+// ============================================
+// GUARANTOR DOMAIN
+// ============================================
+
+model GuarantorSubmission {
+  id                String   @id @default(cuid())
+  profileId         String
+  applicationId     String?
+  // Guarantor personal details
+  firstName         String
+  lastName          String
+  email             String
+  phone             String?
+  // Housing interest
+  housingTypes      String   // JSON array of selected housing types
+  // Document references (stored as identifiers, not raw files)
+  passportRef       String?
+  proofOfAddressRef String?
+  incomeProofRef    String?
+  // Consent
+  consentGiven      Boolean  @default(false)
+  consentTimestamp  DateTime?
+  // Status
+  status            String   @default("submitted")
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  profile           IdentityProfile @relation(fields: [profileId], references: [id])
 }

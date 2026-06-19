@@ -46,6 +46,9 @@ export async function GET(
   }
 }
 
+// Statuses that count as a finished verification check
+const TERMINAL_VERIFICATION_STATUSES = ["verified", "passed", "completed", "rejected", "failed"];
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -63,7 +66,7 @@ export async function PATCH(
       );
     }
 
-    // Build update data from allowed fields
+    // Build profile update data from allowed fields
     const allowedFields = [
       "firstName",
       "lastName",
@@ -84,32 +87,83 @@ export async function PATCH(
       }
     }
 
-    if (Object.keys(updateData).length === 0) {
+    // Optional verification-level updates (review actions from the verifier UI)
+    const verificationId: string | undefined = body.verificationId;
+    const verificationStatus: string | undefined = body.verificationStatus;
+    const verifyAllPending: boolean = body.verifyAllPending === true;
+    const performedBy: string = typeof body.performedBy === "string" ? body.performedBy : "api";
+
+    const hasProfileUpdate = Object.keys(updateData).length > 0;
+    const hasVerificationUpdate = Boolean(verificationId && verificationStatus);
+
+    if (!hasProfileUpdate && !hasVerificationUpdate && !verifyAllPending) {
       return NextResponse.json(
         { error: "No valid fields to update" },
         { status: 400 }
       );
     }
 
-    const profile = await db.identityProfile.update({
+    // Apply all changes atomically
+    await db.$transaction(async (tx) => {
+      // Approve/reject a single verification check
+      if (hasVerificationUpdate) {
+        await tx.verificationRecord.updateMany({
+          where: { id: verificationId, profileId: id },
+          data: {
+            status: verificationStatus!,
+            completedAt: TERMINAL_VERIFICATION_STATUSES.includes(verificationStatus!)
+              ? new Date()
+              : null,
+            ...(verificationStatus === "verified" ? { confidence: 100 } : {}),
+          },
+        });
+      }
+
+      // Profile-level "Approve Applicant" — clear all outstanding checks
+      if (verifyAllPending) {
+        await tx.verificationRecord.updateMany({
+          where: { profileId: id, status: { in: ["pending", "in_progress"] } },
+          data: { status: "verified", completedAt: new Date(), confidence: 100 },
+        });
+      }
+
+      if (hasProfileUpdate) {
+        await tx.identityProfile.update({ where: { id }, data: updateData });
+      }
+    });
+
+    // Re-read the fully hydrated profile so the client gets fresh nested data
+    const profile = await db.identityProfile.findUnique({
       where: { id },
-      data: updateData,
       include: {
         credentials: true,
         evidence: true,
-        verifications: true,
+        verifications: { orderBy: { createdAt: "desc" } },
       },
     });
 
-    // Create audit log
+    // Create audit log — reflect the nature of the change for the regulator-facing trail
+    const action =
+      verifyAllPending || updateData.status === "verified"
+        ? "PROFILE_APPROVED"
+        : updateData.status === "rejected"
+          ? "PROFILE_REJECTED"
+          : hasVerificationUpdate
+            ? "VERIFICATION_REVIEWED"
+            : "PROFILE_UPDATED";
+
     await db.auditLog.create({
       data: {
         profileId: id,
-        action: "PROFILE_UPDATED",
-        performedBy: "api",
+        action,
+        performedBy,
         resource: "IdentityProfile",
         resourceId: id,
-        details: JSON.stringify({ updatedFields: Object.keys(updateData) }),
+        details: JSON.stringify({
+          updatedFields: Object.keys(updateData),
+          ...(hasVerificationUpdate ? { verificationId, verificationStatus } : {}),
+          ...(verifyAllPending ? { verifyAllPending: true } : {}),
+        }),
       },
     });
 

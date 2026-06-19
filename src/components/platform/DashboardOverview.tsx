@@ -1,6 +1,6 @@
 'use client';
 
-import { motion } from 'framer-motion';
+import { motion, type Variants } from 'framer-motion';
 import {
   Users,
   ShieldCheck,
@@ -43,8 +43,15 @@ import {
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent, type ChartConfig } from '@/components/ui/chart';
 import { useApi } from '@/hooks/use-api';
 import { useSession } from 'next-auth/react';
-import { formatDateTime, getStatusStyle } from '@/lib/platform-data';
+import { formatDateTime } from '@/lib/platform-data';
 import { canAccessSection, type UserRole, type SectionId } from '@/lib/rbac';
+import {
+  ApplicantDashboard,
+  RiskAnalystDashboard,
+  VerifierDashboard,
+  PartnerManagerDashboard,
+  PartnerUserDashboard,
+} from '@/components/platform/PersonaDashboards';
 
 // Dashboard data types
 interface DashboardSummary {
@@ -101,7 +108,7 @@ interface ComplianceData {
 }
 
 // Animation variants
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -111,7 +118,7 @@ const containerVariants = {
   },
 };
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
 };
@@ -188,7 +195,31 @@ interface DashboardOverviewProps {
   onNavigate?: (section: SectionId) => void;
 }
 
+// Persona-based router (FR-4): each role lands on a dashboard tailored to its
+// responsibilities, metrics and workflow queues. Roles without a dedicated
+// dashboard (admin, MLRO, compliance officer, property manager, auditor) see the
+// full platform overview below.
 export default function DashboardOverview({ onNavigate }: DashboardOverviewProps = {}) {
+  const { data: session } = useSession();
+  const role = (session?.user?.role || 'tenant') as UserRole;
+
+  switch (role) {
+    case 'tenant':
+      return <ApplicantDashboard onNavigate={onNavigate} />;
+    case 'risk_analyst':
+      return <RiskAnalystDashboard onNavigate={onNavigate} />;
+    case 'identity_verifier':
+      return <VerifierDashboard onNavigate={onNavigate} />;
+    case 'partner_integration_manager':
+      return <PartnerManagerDashboard onNavigate={onNavigate} />;
+    case 'partner_user':
+      return <PartnerUserDashboard onNavigate={onNavigate} />;
+    default:
+      return <DefaultDashboard onNavigate={onNavigate} />;
+  }
+}
+
+function DefaultDashboard({ onNavigate }: DashboardOverviewProps = {}) {
   const { data: session } = useSession();
   const { data: dashboard, isLoading: dashboardLoading } = useApi<DashboardData>('dashboard', '/api/dashboard', true, {
     userId: session?.user?.id || '',
